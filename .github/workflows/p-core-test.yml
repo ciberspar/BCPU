@@ -1,3 +1,4 @@
+
 name: BCPU Tomato G1 - Hardware Tests
 
 on:
@@ -30,13 +31,11 @@ jobs:
       - name: Test ALU
         run: |
           mkdir -p build
-
           iverilog -g2012 -Wall \
             -s alu_tb \
             -o build/alu_tb.vvp \
             tomato-g1/rtl/alu.v \
             tomato-g1/rtl/alu_tb.v
-
           vvp build/alu_tb.vvp
 
       - name: Test Registers
@@ -46,8 +45,16 @@ jobs:
             -o build/registers_tb.vvp \
             tomato-g1/rtl/registers.v \
             tomato-g1/rtl/registers_tb.v
-
           vvp build/registers_tb.vvp
+
+      - name: Test Control Unit
+        run: |
+          iverilog -g2012 -Wall \
+            -s control_unit_tb \
+            -o build/control_unit_tb.vvp \
+            tomato-g1/rtl/control_unit.v \
+            tomato-g1/rtl/control_unit_tb.v
+          vvp build/control_unit_tb.vvp
 
       - name: Test P-Core
         run: |
@@ -58,5 +65,4 @@ jobs:
             tomato-g1/rtl/registers.v \
             tomato-g1/rtl/p_core.v \
             tomato-g1/rtl/p_core_tb.v
-
           vvp build/p_core_tb.vvp
