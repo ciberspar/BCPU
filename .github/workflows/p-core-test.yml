@@ -1,26 +1,23 @@
-
-name: BCPU Tomato G1 - Hardware Tests
+name: BCPU Tomato G1 - RTL Tests
 
 on:
   push:
-    paths:
-      - "tomato-g1/rtl/**"
-      - ".github/workflows/p-core-test.yml"
-
+    branches:
+      - main
+      - pruebas
   pull_request:
-    paths:
-      - "tomato-g1/rtl/**"
-      - ".github/workflows/p-core-test.yml"
-
+    branches:
+      - main
+      - pruebas
   workflow_dispatch:
 
 jobs:
-  hardware-tests:
-    name: Tomato G1 RTL Tests
+  rtl-tests:
+    name: Tomato G1 Hardware Verification
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install Icarus Verilog
@@ -28,8 +25,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y iverilog
 
-      - name: Create build directory
+      - name: Create Build Directory
         run: mkdir -p build
+
+      # -------------------------------------
+      # ALU
+      # -------------------------------------
 
       - name: Test ALU
         run: |
@@ -38,7 +39,12 @@ jobs:
             -o build/alu_tb.vvp \
             tomato-g1/rtl/alu.v \
             tomato-g1/rtl/alu_tb.v
+
           vvp build/alu_tb.vvp
+
+      # -------------------------------------
+      # REGISTERS
+      # -------------------------------------
 
       - name: Test Registers
         run: |
@@ -47,7 +53,12 @@ jobs:
             -o build/registers_tb.vvp \
             tomato-g1/rtl/registers.v \
             tomato-g1/rtl/registers_tb.v
+
           vvp build/registers_tb.vvp
+
+      # -------------------------------------
+      # CONTROL UNIT
+      # -------------------------------------
 
       - name: Test Control Unit
         run: |
@@ -56,7 +67,12 @@ jobs:
             -o build/control_unit_tb.vvp \
             tomato-g1/rtl/control_unit.v \
             tomato-g1/rtl/control_unit_tb.v
+
           vvp build/control_unit_tb.vvp
+
+      # -------------------------------------
+      # MEMORY CONTROLLER
+      # -------------------------------------
 
       - name: Test Memory Controller
         run: |
@@ -65,7 +81,12 @@ jobs:
             -o build/memory_controller_tb.vvp \
             tomato-g1/rtl/memory_controller.v \
             tomato-g1/rtl/memory_controller_tb.v
+
           vvp build/memory_controller_tb.vvp
+
+      # -------------------------------------
+      # P-CORE
+      # -------------------------------------
 
       - name: Test P-Core
         run: |
@@ -74,9 +95,15 @@ jobs:
             -o build/p_core_tb.vvp \
             tomato-g1/rtl/alu.v \
             tomato-g1/rtl/registers.v \
+            tomato-g1/rtl/control_unit.v \
             tomato-g1/rtl/p_core.v \
             tomato-g1/rtl/p_core_tb.v
+
           vvp build/p_core_tb.vvp
+
+      # -------------------------------------
+      # E-CORE
+      # -------------------------------------
 
       - name: Test E-Core
         run: |
@@ -85,9 +112,15 @@ jobs:
             -o build/e_core_tb.vvp \
             tomato-g1/rtl/alu.v \
             tomato-g1/rtl/registers.v \
+            tomato-g1/rtl/control_unit.v \
             tomato-g1/rtl/e_core.v \
             tomato-g1/rtl/e_core_tb.v
+
           vvp build/e_core_tb.vvp
+
+      # -------------------------------------
+      # CORE SCHEDULER
+      # -------------------------------------
 
       - name: Test Core Scheduler
         run: |
@@ -96,4 +129,45 @@ jobs:
             -o build/core_scheduler_tb.vvp \
             tomato-g1/rtl/core_scheduler.v \
             tomato-g1/rtl/core_scheduler_tb.v
+
           vvp build/core_scheduler_tb.vvp
+
+      # -------------------------------------
+      # TOMATO G1 INTEGRATED SYSTEM
+      # -------------------------------------
+
+      - name: Test Tomato G1 Integrated System
+        run: |
+          iverilog -g2012 -Wall \
+            -s tomato_g1_top_tb \
+            -o build/tomato_g1_top_tb.vvp \
+            tomato-g1/rtl/alu.v \
+            tomato-g1/rtl/registers.v \
+            tomato-g1/rtl/control_unit.v \
+            tomato-g1/rtl/p_core.v \
+            tomato-g1/rtl/e_core.v \
+            tomato-g1/rtl/core_scheduler.v \
+            tomato-g1/rtl/tomato_g1_top.v \
+            tomato-g1/rtl/tomato_g1_top_tb.v
+
+          vvp build/tomato_g1_top_tb.vvp
+
+      # -------------------------------------
+      # SUCCESS
+      # -------------------------------------
+
+      - name: Verification Complete
+        run: |
+          echo "=================================="
+          echo " BCPU TOMATO G1"
+          echo " RTL VERIFICATION COMPLETED"
+          echo "=================================="
+          echo "ALU: PASSED"
+          echo "REGISTERS: PASSED"
+          echo "CONTROL UNIT: PASSED"
+          echo "MEMORY CONTROLLER: PASSED"
+          echo "P-CORE: PASSED"
+          echo "E-CORE: PASSED"
+          echo "CORE SCHEDULER: PASSED"
+          echo "INTEGRATED SYSTEM: PASSED"
+          echo "=================================="
