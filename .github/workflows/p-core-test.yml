@@ -29,7 +29,6 @@ jobs:
       - name: Create Build Directory
         run: mkdir -p build
 
-      # ALU
       - name: Test ALU
         run: |
           iverilog -g2012 -Wall \
@@ -37,10 +36,8 @@ jobs:
             -o build/alu_tb.vvp \
             tomato-g1/rtl/alu.v \
             tomato-g1/rtl/alu_tb.v
-
           vvp build/alu_tb.vvp
 
-      # REGISTERS
       - name: Test Registers
         run: |
           iverilog -g2012 -Wall \
@@ -48,10 +45,8 @@ jobs:
             -o build/registers_tb.vvp \
             tomato-g1/rtl/registers.v \
             tomato-g1/rtl/registers_tb.v
-
           vvp build/registers_tb.vvp
 
-      # CONTROL UNIT
       - name: Test Control Unit
         run: |
           iverilog -g2012 -Wall \
@@ -59,10 +54,8 @@ jobs:
             -o build/control_unit_tb.vvp \
             tomato-g1/rtl/control_unit.v \
             tomato-g1/rtl/control_unit_tb.v
-
           vvp build/control_unit_tb.vvp
 
-      # MEMORY CONTROLLER
       - name: Test Memory Controller
         run: |
           iverilog -g2012 -Wall \
@@ -70,10 +63,8 @@ jobs:
             -o build/memory_controller_tb.vvp \
             tomato-g1/rtl/memory_controller.v \
             tomato-g1/rtl/memory_controller_tb.v
-
           vvp build/memory_controller_tb.vvp
 
-      # P-CORE
       - name: Test P-Core
         run: |
           iverilog -g2012 -Wall \
@@ -84,10 +75,8 @@ jobs:
             tomato-g1/rtl/control_unit.v \
             tomato-g1/rtl/p_core.v \
             tomato-g1/rtl/p_core_tb.v
-
           vvp build/p_core_tb.vvp
 
-      # E-CORE
       - name: Test E-Core
         run: |
           iverilog -g2012 -Wall \
@@ -98,10 +87,8 @@ jobs:
             tomato-g1/rtl/control_unit.v \
             tomato-g1/rtl/e_core.v \
             tomato-g1/rtl/e_core_tb.v
-
           vvp build/e_core_tb.vvp
 
-      # CORE SCHEDULER
       - name: Test Core Scheduler
         run: |
           iverilog -g2012 -Wall \
@@ -109,10 +96,8 @@ jobs:
             -o build/core_scheduler_tb.vvp \
             tomato-g1/rtl/core_scheduler.v \
             tomato-g1/rtl/core_scheduler_tb.v
-
           vvp build/core_scheduler_tb.vvp
 
-      # CORE SCHEDULER STRESS TEST
       - name: Test Core Scheduler Stress
         run: |
           iverilog -g2012 -Wall \
@@ -120,10 +105,20 @@ jobs:
             -o build/core_scheduler_stress_tb.vvp \
             tomato-g1/rtl/core_scheduler.v \
             tomato-g1/rtl/core_scheduler_stress_tb.v
-
           vvp build/core_scheduler_stress_tb.vvp
 
-      # TOMATO G1 INTEGRATED SYSTEM
+      - name: Test Core Scheduler Contention
+        run: |
+          iverilog -g2012 -Wall \
+            -s core_scheduler_contention_tb \
+            -o build/core_scheduler_contention_tb.vvp \
+            tomato-g1/rtl/core_scheduler.v \
+            tomato-g1/rtl/core_scheduler_contention_tb.v
+
+          vvp build/core_scheduler_contention_tb.vvp | tee build/contention.log
+
+          grep -q "ALL CONTENTION TESTS PASSED!" build/contention.log
+
       - name: Test Tomato G1 Integrated System
         run: |
           iverilog -g2012 -Wall \
@@ -137,10 +132,8 @@ jobs:
             tomato-g1/rtl/core_scheduler.v \
             tomato-g1/rtl/tomato_g1_top.v \
             tomato-g1/rtl/tomato_g1_top_tb.v
-
           vvp build/tomato_g1_top_tb.vvp
 
-      # SUCCESS
       - name: Verification Complete
         run: |
           echo "=================================="
@@ -155,5 +148,6 @@ jobs:
           echo "E-CORE: PASSED"
           echo "CORE SCHEDULER: PASSED"
           echo "SCHEDULER STRESS: PASSED"
+          echo "SCHEDULER CONTENTION: PASSED"
           echo "INTEGRATED SYSTEM: PASSED"
           echo "=================================="
