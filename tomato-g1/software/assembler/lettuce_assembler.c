@@ -6,70 +6,39 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef LETTUCE_ASSEMBLER_NO_MAIN
-#define LETTUCE_ASSEMBLER_HAS_MAIN
-#endif
-
-#define OP_NOP   0
-#define OP_ADD   1
-#define OP_SUB   2
-#define OP_MUL   3
-#define OP_AND   5
-#define OP_OR    6
-#define OP_XOR   7
-#define OP_NOT   8
-#define OP_SHL   9
-#define OP_SHR   10
-#define OP_SAR   11
-#define OP_ADDI  12
-#define OP_ANDI  13
-#define OP_ORI   14
-#define OP_XORI  15
-#define OP_LDW   17
-#define OP_STW   18
-#define OP_HALT  31
-
-#define MAX_OPERANDS 4
-#define IMMEDIATE_MIN (-131072)
-#define IMMEDIATE_MAX 131071
+typedef enum {
+    TYPE_NONE,
+    TYPE_RRR,
+    TYPE_NOT,
+    TYPE_RRI,
+    TYPE_MEMORY
+} InstructionType;
 
 typedef struct {
     const char *name;
-    unsigned int opcode;
-    int type;
+    uint32_t opcode;
+    InstructionType type;
 } Instruction;
 
-enum {
-    TYPE_NONE,
-    TYPE_RRR,
-    TYPE_RRI,
-    TYPE_MEMORY,
-    TYPE_NOT
-};
-
-static const Instruction instructions[] = {
-    {"NOP",  OP_NOP,  TYPE_NONE},
-    {"HALT", OP_HALT, TYPE_NONE},
-
-    {"ADD",  OP_ADD,  TYPE_RRR},
-    {"SUB",  OP_SUB,  TYPE_RRR},
-    {"MUL",  OP_MUL,  TYPE_RRR},
-    {"AND",  OP_AND,  TYPE_RRR},
-    {"OR",   OP_OR,   TYPE_RRR},
-    {"XOR",  OP_XOR,  TYPE_RRR},
-    {"SHL",  OP_SHL,  TYPE_RRR},
-    {"SHR",  OP_SHR,  TYPE_RRR},
-    {"SAR",  OP_SAR,  TYPE_RRR},
-
-    {"NOT",  OP_NOT,  TYPE_NOT},
-
-    {"ADDI", OP_ADDI, TYPE_RRI},
-    {"ANDI", OP_ANDI, TYPE_RRI},
-    {"ORI",  OP_ORI,  TYPE_RRI},
-    {"XORI", OP_XORI, TYPE_RRI},
-
-    {"LDW",  OP_LDW,  TYPE_MEMORY},
-    {"STW",  OP_STW,  TYPE_MEMORY}
+static const Instruction instruction_set[] = {
+    {"NOP",  0,  TYPE_NONE},
+    {"ADD",  1,  TYPE_RRR},
+    {"SUB",  2,  TYPE_RRR},
+    {"MUL",  3,  TYPE_RRR},
+    {"AND",  5,  TYPE_RRR},
+    {"OR",   6,  TYPE_RRR},
+    {"XOR",  7,  TYPE_RRR},
+    {"NOT",  8,  TYPE_NOT},
+    {"SHL",  9,  TYPE_RRR},
+    {"SHR",  10, TYPE_RRR},
+    {"SAR",  11, TYPE_RRR},
+    {"ADDI", 12, TYPE_RRI},
+    {"ANDI", 13, TYPE_RRI},
+    {"ORI",  14, TYPE_RRI},
+    {"XORI", 15, TYPE_RRI},
+    {"LDW",  17, TYPE_MEMORY},
+    {"STW",  18, TYPE_MEMORY},
+    {"HALT", 31, TYPE_NONE}
 };
 
 static void set_error(
@@ -79,13 +48,6 @@ static void set_error(
 ) {
     if (buffer != NULL && size > 0) {
         snprintf(buffer, size, "%s", message);
-    }
-}
-
-static void uppercase(char *text) {
-    while (*text != '\0') {
-        *text = (char)toupper((unsigned char)*text);
-        text++;
     }
 }
 
@@ -101,10 +63,21 @@ static char *trim(char *text) {
     }
 
     *end = '\0';
+
     return text;
 }
 
-static int parse_register(const char *text, unsigned int *reg) {
+static void uppercase(char *text) {
+    while (*text != '\0') {
+        *text = (char)toupper((unsigned char)*text);
+        text++;
+    }
+}
+
+static int parse_register(
+    const char *text,
+    unsigned int *reg
+) {
     if (text == NULL || reg == NULL) {
         return 0;
     }
@@ -120,21 +93,28 @@ static int parse_register(const char *text, unsigned int *reg) {
     errno = 0;
 
     char *end = NULL;
+
     long value = strtol(text + 1, &end, 10);
 
-    if (errno != 0 || end == text + 1 || *end != '\0') {
+    if (errno != 0 ||
+        end == text + 1 ||
+        *end != '\0') {
         return 0;
     }
 
-    if (value < 0 || value > 15) {
+    if (value < 0 || value >= LETTUCE_REGISTER_COUNT) {
         return 0;
     }
 
     *reg = (unsigned int)value;
+
     return 1;
 }
 
-static int parse_immediate(const char *text, int *value) {
+static int parse_immediate(
+    const char *text,
+    int *value
+) {
     if (text == NULL || value == NULL || *text == '\0') {
         return 0;
     }
@@ -142,26 +122,34 @@ static int parse_immediate(const char *text, int *value) {
     errno = 0;
 
     char *end = NULL;
+
     long parsed = strtol(text, &end, 0);
 
-    if (errno != 0 || end == text || *end != '\0') {
+    if (errno != 0 ||
+        end == text ||
+        *end != '\0') {
         return 0;
     }
 
-    if (parsed < IMMEDIATE_MIN || parsed > IMMEDIATE_MAX) {
+    if (parsed < LETTUCE_IMMEDIATE_MIN ||
+        parsed > LETTUCE_IMMEDIATE_MAX) {
         return 0;
     }
 
     *value = (int)parsed;
+
     return 1;
 }
 
-static const Instruction *find_instruction(const char *name) {
-    size_t count = sizeof(instructions) / sizeof(instructions[0]);
+static const Instruction *find_instruction(
+    const char *name
+) {
+    size_t count =
+        sizeof(instruction_set) / sizeof(instruction_set[0]);
 
     for (size_t i = 0; i < count; i++) {
-        if (strcmp(name, instructions[i].name) == 0) {
-            return &instructions[i];
+        if (strcmp(name, instruction_set[i].name) == 0) {
+            return &instruction_set[i];
         }
     }
 
@@ -185,11 +173,7 @@ static int split_operands(
 
         char *operand = trim(start);
 
-        if (*operand == '\0') {
-            return -1;
-        }
-
-        if (count >= maximum) {
+        if (*operand == '\0' || count >= maximum) {
             return -1;
         }
 
@@ -212,8 +196,13 @@ int lettuce_assemble_line(
     size_t error_buffer_size
 ) {
     if (source == NULL || instruction == NULL) {
-        set_error(error_buffer, error_buffer_size, "Invalid input");
-        return -1;
+        set_error(
+            error_buffer,
+            error_buffer_size,
+            "Invalid input"
+        );
+
+        return LETTUCE_ASM_ERROR;
     }
 
     char line[256];
@@ -221,8 +210,13 @@ int lettuce_assemble_line(
     size_t length = strlen(source);
 
     if (length >= sizeof(line)) {
-        set_error(error_buffer, error_buffer_size, "Line too long");
-        return -1;
+        set_error(
+            error_buffer,
+            error_buffer_size,
+            "Instruction line too long"
+        );
+
+        return LETTUCE_ASM_ERROR;
     }
 
     memcpy(line, source, length + 1);
@@ -246,7 +240,7 @@ int lettuce_assemble_line(
         separator++;
     }
 
-    char *operand_text = separator;
+    char *operand_text = NULL;
 
     if (*separator != '\0') {
         *separator = '\0';
@@ -263,17 +257,19 @@ int lettuce_assemble_line(
             error_buffer_size,
             "Unknown or unsupported instruction"
         );
-        return -1;
+
+        return LETTUCE_ASM_ERROR;
     }
 
-    char *operands[MAX_OPERANDS];
+    char *operands[4];
+
     int operand_count = 0;
 
-    if (*operand_text != '\0') {
+    if (operand_text != NULL && *operand_text != '\0') {
         operand_count = split_operands(
             operand_text,
             operands,
-            MAX_OPERANDS
+            4
         );
 
         if (operand_count < 0) {
@@ -282,18 +278,21 @@ int lettuce_assemble_line(
                 error_buffer_size,
                 "Invalid operand list"
             );
-            return -1;
+
+            return LETTUCE_ASM_ERROR;
         }
     }
 
     unsigned int rd = 0;
     unsigned int ra = 0;
     unsigned int rb = 0;
+
     int immediate = 0;
 
     uint32_t encoded = info->opcode << 26;
 
     switch (info->type) {
+
         case TYPE_NONE:
             if (operand_count != 0) {
                 set_error(
@@ -301,7 +300,8 @@ int lettuce_assemble_line(
                     error_buffer_size,
                     "Instruction takes no operands"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
             break;
 
@@ -310,9 +310,10 @@ int lettuce_assemble_line(
                 set_error(
                     error_buffer,
                     error_buffer_size,
-                    "Expected: RD, RA, RB"
+                    "Expected RD, RA, RB"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             if (!parse_register(operands[0], &rd) ||
@@ -323,7 +324,8 @@ int lettuce_assemble_line(
                     error_buffer_size,
                     "Invalid register. Use R0 through R15"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             encoded |= rd << 22;
@@ -336,9 +338,10 @@ int lettuce_assemble_line(
                 set_error(
                     error_buffer,
                     error_buffer_size,
-                    "Expected: RD, RA"
+                    "Expected RD, RA"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             if (!parse_register(operands[0], &rd) ||
@@ -346,9 +349,10 @@ int lettuce_assemble_line(
                 set_error(
                     error_buffer,
                     error_buffer_size,
-                    "Invalid register. Use R0 through R15"
+                    "Invalid register"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             encoded |= rd << 22;
@@ -360,9 +364,10 @@ int lettuce_assemble_line(
                 set_error(
                     error_buffer,
                     error_buffer_size,
-                    "Expected: RD, RA, IMMEDIATE"
+                    "Expected RD, RA, IMMEDIATE"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             if (!parse_register(operands[0], &rd) ||
@@ -370,9 +375,10 @@ int lettuce_assemble_line(
                 set_error(
                     error_buffer,
                     error_buffer_size,
-                    "Invalid register. Use R0 through R15"
+                    "Invalid register"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             if (!parse_immediate(operands[2], &immediate)) {
@@ -381,7 +387,8 @@ int lettuce_assemble_line(
                     error_buffer_size,
                     "Immediate outside signed 18-bit range"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             encoded |= rd << 22;
@@ -394,9 +401,10 @@ int lettuce_assemble_line(
                 set_error(
                     error_buffer,
                     error_buffer_size,
-                    "Expected: REGISTER, BASE, OFFSET"
+                    "Expected REGISTER, BASE, OFFSET"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             if (!parse_register(operands[0], &rd) ||
@@ -404,9 +412,10 @@ int lettuce_assemble_line(
                 set_error(
                     error_buffer,
                     error_buffer_size,
-                    "Invalid register. Use R0 through R15"
+                    "Invalid memory register"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             if (!parse_immediate(operands[2], &immediate)) {
@@ -415,21 +424,14 @@ int lettuce_assemble_line(
                     error_buffer_size,
                     "Invalid memory offset"
                 );
-                return -1;
+
+                return LETTUCE_ASM_ERROR;
             }
 
             encoded |= rd << 22;
             encoded |= ra << 18;
             encoded |= (uint32_t)immediate & 0x3FFFF;
             break;
-
-        default:
-            set_error(
-                error_buffer,
-                error_buffer_size,
-                "Internal assembler error"
-            );
-            return -1;
     }
 
     *instruction = encoded;
@@ -438,19 +440,16 @@ int lettuce_assemble_line(
         error_buffer[0] = '\0';
     }
 
-    return 0;
+    return LETTUCE_ASM_OK;
 }
 
-#ifdef LETTUCE_ASSEMBLER_HAS_MAIN
+#ifndef LETTUCE_ASSEMBLER_NO_MAIN
 
 int main(void) {
     char line[256];
     char error[128];
 
     unsigned long line_number = 0;
-
-    printf("BCPU LETTUCE32 ASSEMBLER\n");
-    printf("Enter instructions. Press Ctrl+D to finish.\n\n");
 
     while (fgets(line, sizeof(line), stdin) != NULL) {
         line_number++;
@@ -468,17 +467,23 @@ int main(void) {
             continue;
         }
 
-        if (result != 0) {
+        if (result != LETTUCE_ASM_OK) {
             fprintf(
                 stderr,
                 "Line %lu: %s\n",
                 line_number,
                 error
             );
+
             return 1;
         }
 
         printf("%08X\n", machine_code);
+    }
+
+    if (ferror(stdin)) {
+        fprintf(stderr, "Input reading error\n");
+        return 1;
     }
 
     return 0;
