@@ -28,9 +28,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y iverilog
 
+      - name: Create build directory
+        run: mkdir -p build
+
       - name: Test ALU
         run: |
-          mkdir -p build
           iverilog -g2012 -Wall \
             -s alu_tb \
             -o build/alu_tb.vvp \
@@ -86,3 +88,12 @@ jobs:
             tomato-g1/rtl/e_core.v \
             tomato-g1/rtl/e_core_tb.v
           vvp build/e_core_tb.vvp
+
+      - name: Test Core Scheduler
+        run: |
+          iverilog -g2012 -Wall \
+            -s core_scheduler_tb \
+            -o build/core_scheduler_tb.vvp \
+            tomato-g1/rtl/core_scheduler.v \
+            tomato-g1/rtl/core_scheduler_tb.v
+          vvp build/core_scheduler_tb.vvp
