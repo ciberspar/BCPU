@@ -134,6 +134,21 @@ jobs:
             tomato-g1/rtl/tomato_g1_top_tb.v
           vvp build/tomato_g1_top_tb.vvp
 
+      - name: Build Lettuce32 Emulator Tests
+        run: |
+          mkdir -p build
+
+          gcc -std=c11 -Wall -Wextra -Werror -O2 \
+            -o build/lettuce_emulator_tb \
+            tomato-g1/software/lettuce_emulator_tb.c
+
+      - name: Run Lettuce32 Emulator Tests
+        run: |
+          ./build/lettuce_emulator_tb | tee build/lettuce_emulator.log
+
+          grep -q "ALL LETTUCE32 TESTS PASSED!" \
+            build/lettuce_emulator.log
+
       - name: Verification Complete
         run: |
           echo "=================================="
