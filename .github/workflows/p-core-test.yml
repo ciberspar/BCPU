@@ -39,6 +39,16 @@ jobs:
 
           vvp build/alu_tb.vvp
 
+      - name: Test Registers
+        run: |
+          iverilog -g2012 -Wall \
+            -s registers_tb \
+            -o build/registers_tb.vvp \
+            tomato-g1/rtl/registers.v \
+            tomato-g1/rtl/registers_tb.v
+
+          vvp build/registers_tb.vvp
+
       - name: Test P-Core
         run: |
           iverilog -g2012 -Wall \
