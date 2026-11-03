@@ -1,3 +1,4 @@
+
 name: BCPU Tomato G1 - RTL Tests
 
 on:
@@ -28,10 +29,7 @@ jobs:
       - name: Create Build Directory
         run: mkdir -p build
 
-      # -------------------------------------
       # ALU
-      # -------------------------------------
-
       - name: Test ALU
         run: |
           iverilog -g2012 -Wall \
@@ -42,10 +40,7 @@ jobs:
 
           vvp build/alu_tb.vvp
 
-      # -------------------------------------
       # REGISTERS
-      # -------------------------------------
-
       - name: Test Registers
         run: |
           iverilog -g2012 -Wall \
@@ -56,10 +51,7 @@ jobs:
 
           vvp build/registers_tb.vvp
 
-      # -------------------------------------
       # CONTROL UNIT
-      # -------------------------------------
-
       - name: Test Control Unit
         run: |
           iverilog -g2012 -Wall \
@@ -70,10 +62,7 @@ jobs:
 
           vvp build/control_unit_tb.vvp
 
-      # -------------------------------------
       # MEMORY CONTROLLER
-      # -------------------------------------
-
       - name: Test Memory Controller
         run: |
           iverilog -g2012 -Wall \
@@ -84,10 +73,7 @@ jobs:
 
           vvp build/memory_controller_tb.vvp
 
-      # -------------------------------------
       # P-CORE
-      # -------------------------------------
-
       - name: Test P-Core
         run: |
           iverilog -g2012 -Wall \
@@ -101,10 +87,7 @@ jobs:
 
           vvp build/p_core_tb.vvp
 
-      # -------------------------------------
       # E-CORE
-      # -------------------------------------
-
       - name: Test E-Core
         run: |
           iverilog -g2012 -Wall \
@@ -118,10 +101,7 @@ jobs:
 
           vvp build/e_core_tb.vvp
 
-      # -------------------------------------
       # CORE SCHEDULER
-      # -------------------------------------
-
       - name: Test Core Scheduler
         run: |
           iverilog -g2012 -Wall \
@@ -132,10 +112,18 @@ jobs:
 
           vvp build/core_scheduler_tb.vvp
 
-      # -------------------------------------
-      # TOMATO G1 INTEGRATED SYSTEM
-      # -------------------------------------
+      # CORE SCHEDULER STRESS TEST
+      - name: Test Core Scheduler Stress
+        run: |
+          iverilog -g2012 -Wall \
+            -s core_scheduler_stress_tb \
+            -o build/core_scheduler_stress_tb.vvp \
+            tomato-g1/rtl/core_scheduler.v \
+            tomato-g1/rtl/core_scheduler_stress_tb.v
 
+          vvp build/core_scheduler_stress_tb.vvp
+
+      # TOMATO G1 INTEGRATED SYSTEM
       - name: Test Tomato G1 Integrated System
         run: |
           iverilog -g2012 -Wall \
@@ -152,10 +140,7 @@ jobs:
 
           vvp build/tomato_g1_top_tb.vvp
 
-      # -------------------------------------
       # SUCCESS
-      # -------------------------------------
-
       - name: Verification Complete
         run: |
           echo "=================================="
@@ -169,5 +154,6 @@ jobs:
           echo "P-CORE: PASSED"
           echo "E-CORE: PASSED"
           echo "CORE SCHEDULER: PASSED"
+          echo "SCHEDULER STRESS: PASSED"
           echo "INTEGRATED SYSTEM: PASSED"
           echo "=================================="
