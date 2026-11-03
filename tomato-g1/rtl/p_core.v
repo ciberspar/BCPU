@@ -53,16 +53,17 @@ module tomato_p_core (
     localparam ALU_MUL = 4'd9;
 
     // Processor states
-    localparam FETCH_REQ  = 3'd0;
-    localparam FETCH_WAIT = 3'd1;
-    localparam DECODE     = 3'd2;
-    localparam LOAD_REQ   = 3'd3;
-    localparam LOAD_WAIT  = 3'd4;
-    localparam STORE_REQ  = 3'd5;
-    localparam STORE_WAIT = 3'd6;
-    localparam WRITEBACK  = 3'd7;
+    localparam FETCH_REQ  = 4'd0;
+    localparam FETCH_WAIT = 4'd1;
+    localparam DECODE     = 4'd2;
+    localparam LOAD_REQ   = 4'd3;
+    localparam LOAD_WAIT  = 4'd4;
+    localparam STORE_REQ  = 4'd5;
+    localparam STORE_WAIT = 4'd6;
+    localparam WRITEBACK  = 4'd7;
+    localparam HALTED     = 4'd8;
 
-    reg [2:0] state;
+    reg [3:0] state;
 
     reg [31:0] pc;
     reg [31:0] instruction;
@@ -75,9 +76,9 @@ module tomato_p_core (
 
     // Instruction fields
     wire [5:0] opcode = instruction[31:26];
-    wire [3:0] rd     = instruction[25:22];
-    wire [3:0] ra     = instruction[21:18];
-    wire [3:0] rb     = instruction[17:14];
+    wire [3:0] rd = instruction[25:22];
+    wire [3:0] ra = instruction[21:18];
+    wire [3:0] rb = instruction[17:14];
 
     wire [17:0] immediate = instruction[17:0];
 
@@ -91,6 +92,12 @@ module tomato_p_core (
     wire [31:0] register_a;
     wire [31:0] register_b;
 
+    wire [3:0] read_address_b;
+
+    // STW reads its data from RD.
+    assign read_address_b =
+        (opcode == OP_STW) ? rd : rb;
+
     wire register_write_enable;
 
     tomato_registers registers (
@@ -98,14 +105,16 @@ module tomato_p_core (
         .reset(reset),
         .write_enable(register_write_enable),
         .read_addr_a(ra),
-        .read_addr_b(rb),
+        .read_addr_b(read_address_b),
         .write_addr(destination),
         .write_data(writeback_value),
         .read_data_a(register_a),
         .read_data_b(register_b)
     );
 
-    assign register_write_enable = (state == WRITEBACK);
+    // Write once during WRITEBACK.
+    assign register_write_enable =
+        (state == WRITEBACK);
 
     // ALU
     reg [3:0] alu_operation;
@@ -130,6 +139,7 @@ module tomato_p_core (
         alu_operation = ALU_ADD;
 
         case (opcode)
+
             OP_ADD: alu_operation = ALU_ADD;
             OP_SUB: alu_operation = ALU_SUB;
             OP_MUL: alu_operation = ALU_MUL;
@@ -166,14 +176,10 @@ module tomato_p_core (
                 alu_b = signed_immediate;
             end
 
-            OP_BEQ, OP_BNE, OP_BLT, OP_BGE: begin
-                alu_operation = ALU_SUB;
-                alu_b = register_b;
-            end
-
             default: begin
                 alu_operation = ALU_ADD;
             end
+
         endcase
     end
 
@@ -182,7 +188,8 @@ module tomato_p_core (
         (state == FETCH_REQ) ||
         (state == LOAD_REQ);
 
-    assign mem_write = (state == STORE_REQ);
+    assign mem_write =
+        (state == STORE_REQ);
 
     assign mem_address =
         (state == FETCH_REQ) ? pc :
@@ -191,13 +198,12 @@ module tomato_p_core (
     assign mem_write_data = store_value;
 
     // Processor status
-    assign halted = (state == WRITEBACK) ? 1'b0 :
-                    (state == FETCH_REQ && opcode == OP_HALT);
-
+    assign halted = (state == HALTED);
     assign debug_pc = pc;
 
     // Main processor controller
     always @(posedge clk or posedge reset) begin
+
         if (reset) begin
             state             <= FETCH_REQ;
             pc                <= 32'b0;
@@ -206,7 +212,9 @@ module tomato_p_core (
             store_value       <= 32'b0;
             destination       <= 4'b0;
             writeback_value   <= 32'b0;
-        end else begin
+        end
+
+        else begin
 
             case (state)
 
@@ -215,7 +223,7 @@ module tomato_p_core (
                     state <= FETCH_WAIT;
                 end
 
-                // Wait for instruction memory
+                // Wait for instruction
                 FETCH_WAIT: begin
                     if (mem_ready) begin
                         instruction <= mem_read_data;
@@ -233,9 +241,9 @@ module tomato_p_core (
                             state <= FETCH_REQ;
                         end
 
+                        // Permanent halt
                         OP_HALT: begin
-                            state <= WRITEBACK;
-                            destination <= 4'd0;
+                            state <= HALTED;
                         end
 
                         // Register arithmetic
@@ -247,6 +255,7 @@ module tomato_p_core (
                             destination <= rd;
                             writeback_value <= alu_result;
                             state <= WRITEBACK;
+
                         end
 
                         // Immediate arithmetic
@@ -256,58 +265,76 @@ module tomato_p_core (
                             destination <= rd;
                             writeback_value <= alu_result;
                             state <= WRITEBACK;
+
                         end
 
                         // Load word
                         OP_LDW: begin
+
                             effective_address <= alu_result;
                             destination <= rd;
                             state <= LOAD_REQ;
+
                         end
 
                         // Store word
+                        // RA = address base
+                        // RD = data to store
                         OP_STW: begin
+
                             effective_address <= alu_result;
-                            store_value <= register_a;
+                            store_value <= register_b;
                             state <= STORE_REQ;
+
                         end
 
-                        // Conditional branches
+                        // Branch if equal
                         OP_BEQ: begin
+
                             if (register_a == register_b)
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
+
                         end
 
+                        // Branch if not equal
                         OP_BNE: begin
+
                             if (register_a != register_b)
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
+
                         end
 
+                        // Branch if less than
                         OP_BLT: begin
+
                             if ($signed(register_a) <
                                 $signed(register_b))
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
+
                         end
 
+                        // Branch if greater or equal
                         OP_BGE: begin
+
                             if ($signed(register_a) >=
                                 $signed(register_b))
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
+
                         end
 
-                        // Unsupported instructions
+                        // Unsupported instruction
                         default: begin
                             state <= FETCH_REQ;
                         end
@@ -322,10 +349,12 @@ module tomato_p_core (
 
                 // Wait for loaded data
                 LOAD_WAIT: begin
+
                     if (mem_ready) begin
                         writeback_value <= mem_read_data;
                         state <= WRITEBACK;
                     end
+
                 end
 
                 // Request data store
@@ -335,16 +364,20 @@ module tomato_p_core (
 
                 // Wait for completed store
                 STORE_WAIT: begin
+
                     if (mem_ready)
                         state <= FETCH_REQ;
+
                 end
 
                 // Write result into register file
                 WRITEBACK: begin
-                    if (opcode == OP_HALT)
-                        state <= WRITEBACK;
-                    else
-                        state <= FETCH_REQ;
+                    state <= FETCH_REQ;
+                end
+
+                // Permanent stopped state
+                HALTED: begin
+                    state <= HALTED;
                 end
 
                 default: begin
