@@ -1,51 +1,35 @@
 
-/*
- * BCPU Tomato G1
- * Lettuce32 Software Emulator
- *
- * Version: 0.1
- * Architecture: Lettuce32
- *
- * Initial instruction-set emulator.
- */
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#define MEMORY_SIZE (1024u * 1024u)
 #define REGISTER_COUNT 16
-#define MEMORY_SIZE (1024 * 1024)
-#define MAX_STEPS 1000000
+#define MAX_STEPS 1000000u
 
-/* Lettuce32 opcodes */
-
-enum {
-    OP_NOP   = 0,
-    OP_ADD   = 1,
-    OP_SUB   = 2,
-    OP_MUL   = 3,
-    OP_AND   = 5,
-    OP_OR    = 6,
-    OP_XOR   = 7,
-    OP_NOT   = 8,
-    OP_SHL   = 9,
-    OP_SHR   = 10,
-    OP_SAR   = 11,
-    OP_ADDI  = 12,
-    OP_ANDI  = 13,
-    OP_ORI   = 14,
-    OP_XORI  = 15,
-    OP_LDW   = 17,
-    OP_STW   = 18,
-    OP_BEQ   = 23,
-    OP_BNE   = 24,
-    OP_BLT   = 25,
-    OP_BGE   = 26,
-    OP_HALT  = 31
-};
-
-/* CPU state */
+#define OP_NOP   0
+#define OP_ADD   1
+#define OP_SUB   2
+#define OP_MUL   3
+#define OP_AND   5
+#define OP_OR    6
+#define OP_XOR   7
+#define OP_NOT   8
+#define OP_SHL   9
+#define OP_SHR   10
+#define OP_SAR   11
+#define OP_ADDI  12
+#define OP_ANDI  13
+#define OP_ORI   14
+#define OP_XORI  15
+#define OP_LDW   17
+#define OP_STW   18
+#define OP_BEQ   23
+#define OP_BNE   24
+#define OP_BLT   25
+#define OP_BGE   26
+#define OP_HALT  31
 
 typedef struct {
     uint32_t registers[REGISTER_COUNT];
@@ -56,94 +40,94 @@ typedef struct {
     int error;
 } LettuceCPU;
 
-/* Sign extension */
-
 static int32_t sign_extend_18(uint32_t value) {
     value &= 0x3FFFFu;
 
-    if (value & 0x20000u)
+    if (value & 0x20000u) {
         value |= 0xFFFC0000u;
+    }
 
     return (int32_t)value;
 }
-
-/* Memory access: little-endian */
-
-static uint32_t memory_read32(
-    LettuceCPU *cpu,
-    uint32_t address
-) {
-    if (address > MEMORY_SIZE - 4) {
-        cpu->error = 1;
-        return 0;
-    }
-
-    return
-        (uint32_t)cpu->memory[address] |
-        ((uint32_t)cpu->memory[address + 1] << 8) |
-        ((uint32_t)cpu->memory[address + 2] << 16) |
-        ((uint32_t)cpu->memory[address + 3] << 24);
-}
-
-static void memory_write32(
-    LettuceCPU *cpu,
-    uint32_t address,
-    uint32_t value
-) {
-    if (address > MEMORY_SIZE - 4) {
-        cpu->error = 1;
-        return;
-    }
-
-    cpu->memory[address]     = (uint8_t)value;
-    cpu->memory[address + 1] = (uint8_t)(value >> 8);
-    cpu->memory[address + 2] = (uint8_t)(value >> 16);
-    cpu->memory[address + 3] = (uint8_t)(value >> 24);
-}
-
-/* CPU initialization */
 
 static void cpu_init(LettuceCPU *cpu) {
     memset(cpu, 0, sizeof(*cpu));
 }
 
-/* Instruction execution */
-
-static void cpu_step(LettuceCPU *cpu) {
-    if (cpu->halted || cpu->error)
-        return;
-
-    if (cpu->pc > MEMORY_SIZE - 4) {
+static int memory_read32(LettuceCPU *cpu,
+                         uint32_t address,
+                         uint32_t *value) {
+    if ((address & 3u) != 0 ||
+        address > MEMORY_SIZE - 4u) {
         cpu->error = 1;
-        return;
+        return 0;
     }
 
-    uint32_t instruction =
-        memory_read32(cpu, cpu->pc);
+    *value =
+        (uint32_t)cpu->memory[address] |
+        ((uint32_t)cpu->memory[address + 1] << 8) |
+        ((uint32_t)cpu->memory[address + 2] << 16) |
+        ((uint32_t)cpu->memory[address + 3] << 24);
 
-    if (cpu->error)
-        return;
+    return 1;
+}
 
-    cpu->pc += 4;
-    cpu->cycles++;
+static int memory_write32(LettuceCPU *cpu,
+                          uint32_t address,
+                          uint32_t value) {
+    if ((address & 3u) != 0 ||
+        address > MEMORY_SIZE - 4u) {
+        cpu->error = 1;
+        return 0;
+    }
 
-    uint32_t opcode = instruction >> 26;
-    uint32_t rd = (instruction >> 22) & 0xF;
-    uint32_t ra = (instruction >> 18) & 0xF;
-    uint32_t rb = (instruction >> 14) & 0xF;
+    cpu->memory[address] = (uint8_t)value;
+    cpu->memory[address + 1] = (uint8_t)(value >> 8);
+    cpu->memory[address + 2] = (uint8_t)(value >> 16);
+    cpu->memory[address + 3] = (uint8_t)(value >> 24);
 
-    uint32_t immediate = instruction & 0x3FFFFu;
+    return 1;
+}
 
-    int32_t signed_imm = sign_extend_18(immediate);
+static int cpu_step(LettuceCPU *cpu) {
+    uint32_t instruction;
+    uint32_t opcode;
+    uint32_t rd;
+    uint32_t ra;
+    uint32_t rb;
+    uint32_t immediate;
 
-    uint32_t a = cpu->registers[ra];
-    uint32_t b = cpu->registers[rb];
-
+    uint32_t a;
+    uint32_t b;
     uint32_t result = 0;
-    uint32_t address = 0;
+    uint32_t next_pc;
+
+    if (cpu->halted || cpu->error) {
+        return 0;
+    }
+
+    if ((cpu->pc & 3u) != 0 ||
+        cpu->pc > MEMORY_SIZE - 4u) {
+        cpu->error = 1;
+        return 0;
+    }
+
+    if (!memory_read32(cpu, cpu->pc, &instruction)) {
+        return 0;
+    }
+
+    opcode = instruction >> 26;
+    rd = (instruction >> 22) & 0xF;
+    ra = (instruction >> 18) & 0xF;
+    rb = (instruction >> 14) & 0xF;
+    immediate = instruction & 0x3FFFFu;
+
+    a = cpu->registers[ra];
+    b = cpu->registers[rb];
+
+    next_pc = cpu->pc + 4u;
 
     switch (opcode) {
-
         case OP_NOP:
             break;
 
@@ -179,20 +163,32 @@ static void cpu_step(LettuceCPU *cpu) {
             break;
 
         case OP_SHL:
-            cpu->registers[rd] = a << (b & 31);
+            cpu->registers[rd] = a << (b & 31u);
             break;
 
         case OP_SHR:
-            cpu->registers[rd] = a >> (b & 31);
+            cpu->registers[rd] = a >> (b & 31u);
             break;
 
-        case OP_SAR:
-            cpu->registers[rd] =
-                (uint32_t)((int32_t)a >> (b & 31));
+        case OP_SAR: {
+            uint32_t shift = b & 31u;
+
+            if (shift == 0) {
+                result = a;
+            } else if (a & 0x80000000u) {
+                result = (a >> shift) |
+                         (~0u << (32u - shift));
+            } else {
+                result = a >> shift;
+            }
+
+            cpu->registers[rd] = result;
             break;
+        }
 
         case OP_ADDI:
-            cpu->registers[rd] = a + (uint32_t)signed_imm;
+            cpu->registers[rd] =
+                a + (uint32_t)sign_extend_18(immediate);
             break;
 
         case OP_ANDI:
@@ -207,39 +203,58 @@ static void cpu_step(LettuceCPU *cpu) {
             cpu->registers[rd] = a ^ immediate;
             break;
 
-        case OP_LDW:
-            address = a + (uint32_t)signed_imm;
-            cpu->registers[rd] =
-                memory_read32(cpu, address);
-            break;
+        case OP_LDW: {
+            uint32_t address =
+                a + (uint32_t)sign_extend_18(immediate);
 
-        case OP_STW:
-            address = a + (uint32_t)signed_imm;
-            memory_write32(
-                cpu,
-                address,
-                cpu->registers[rd]
-            );
+            if (!memory_read32(cpu, address, &result)) {
+                return 0;
+            }
+
+            cpu->registers[rd] = result;
             break;
+        }
+
+        case OP_STW: {
+            uint32_t address =
+                a + (uint32_t)sign_extend_18(immediate);
+
+            if (!memory_write32(
+                    cpu,
+                    address,
+                    cpu->registers[rd])) {
+                return 0;
+            }
+
+            break;
+        }
 
         case OP_BEQ:
-            if (a == b)
-                cpu->pc += (uint32_t)(signed_imm * 4);
+            if (a == b) {
+                next_pc +=
+                    (uint32_t)(sign_extend_18(immediate) * 4);
+            }
             break;
 
         case OP_BNE:
-            if (a != b)
-                cpu->pc += (uint32_t)(signed_imm * 4);
+            if (a != b) {
+                next_pc +=
+                    (uint32_t)(sign_extend_18(immediate) * 4);
+            }
             break;
 
         case OP_BLT:
-            if ((int32_t)a < (int32_t)b)
-                cpu->pc += (uint32_t)(signed_imm * 4);
+            if ((int32_t)a < (int32_t)b) {
+                next_pc +=
+                    (uint32_t)(sign_extend_18(immediate) * 4);
+            }
             break;
 
         case OP_BGE:
-            if ((int32_t)a >= (int32_t)b)
-                cpu->pc += (uint32_t)(signed_imm * 4);
+            if ((int32_t)a >= (int32_t)b) {
+                next_pc +=
+                    (uint32_t)(sign_extend_18(immediate) * 4);
+            }
             break;
 
         case OP_HALT:
@@ -247,78 +262,51 @@ static void cpu_step(LettuceCPU *cpu) {
             break;
 
         default:
-            fprintf(
-                stderr,
-                "Lettuce32: unsupported opcode %u at PC 0x%08X\n",
-                opcode,
-                cpu->pc - 4
-            );
+            cpu->error = 1;
+            return 0;
+    }
+
+    cpu->pc = next_pc;
+    cpu->registers[0] = 0;
+    cpu->cycles++;
+
+    return 1;
+}
+
+static int cpu_run(LettuceCPU *cpu) {
+    uint64_t steps = 0;
+
+    while (!cpu->halted && !cpu->error) {
+        if (steps >= MAX_STEPS) {
             cpu->error = 1;
             break;
+        }
+
+        if (!cpu_step(cpu)) {
+            break;
+        }
+
+        steps++;
     }
 
-    /* R0 is always zero. */
-    cpu->registers[0] = 0;
+    return cpu->halted && !cpu->error;
 }
 
-/* Run CPU */
-
-static void cpu_run(LettuceCPU *cpu) {
-    while (!cpu->halted &&
-           !cpu->error &&
-           cpu->cycles < MAX_STEPS) {
-        cpu_step(cpu);
-    }
-
-    if (cpu->cycles >= MAX_STEPS &&
-        !cpu->halted &&
-        !cpu->error) {
-        fprintf(stderr, "Lettuce32: cycle limit reached\n");
-        cpu->error = 1;
-    }
-}
-
-/* Demonstration program */
-
-static void load_demo_program(LettuceCPU *cpu) {
-    /*
-     * The demo will be added after the assembler
-     * and instruction encoder are defined.
-     */
-    (void)cpu;
-}
-
-/* Main */
+#ifndef LETTUCE_EMULATOR_NO_MAIN
 
 int main(void) {
     LettuceCPU cpu;
 
     cpu_init(&cpu);
-    load_demo_program(&cpu);
 
-    printf("BCPU Tomato G1 - Lettuce32 Emulator\n");
+    printf("BCPU LETTUCE32 EMULATOR\n");
     printf("Memory: %u bytes\n", MEMORY_SIZE);
+    printf("Registers: %d\n", REGISTER_COUNT);
+    printf("Maximum steps: %u\n", MAX_STEPS);
+    printf("Emulator initialized successfully.\n");
+    printf("Waiting for a Lettuce32 program.\n");
 
-    cpu_run(&cpu);
-
-    printf("Cycles: %llu\n",
-           (unsigned long long)cpu.cycles);
-
-    if (cpu.halted)
-        printf("CPU halted successfully.\n");
-
-    if (cpu.error)
-        printf("CPU stopped because of an execution error.\n");
-
-    printf("\nRegisters:\n");
-
-    for (int i = 0; i < REGISTER_COUNT; i++) {
-        printf(
-            "R%-2d = 0x%08X\n",
-            i,
-            cpu.registers[i]
-        );
-    }
-
-    return cpu.error ? EXIT_FAILURE : EXIT_SUCCESS;
+    return 0;
 }
+
+#endif
