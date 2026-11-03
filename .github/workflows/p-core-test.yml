@@ -1,0 +1,35 @@
+name: BCPU Tomato G1 - P-Core Test
+on:
+  push:
+    paths:
+      - "tomato-g1/rtl/**"
+      - ".github/workflows/p-core-test.yml"
+  pull_request:
+    paths:
+      - "tomato-g1/rtl/**"
+      - ".github/workflows/p-core-test.yml"
+  workflow_dispatch:
+jobs:
+  p-core-simulation:
+    name: Simulate Tomato P-Core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+      - name: Compile P-Core testbench
+        run: |
+          mkdir -p build
+          iverilog -g2012 -Wall \
+            -s p_core_tb \
+            -o build/p_core_tb.vvp \
+            tomato-g1/rtl/alu.v \
+            tomato-g1/rtl/registers.v \
+            tomato-g1/rtl/p_core.v \
+            tomato-g1/rtl/p_core_tb.v
+      - name: Run P-Core simulation
+        run: |
+          vvp build/p_core_tb.vvp
