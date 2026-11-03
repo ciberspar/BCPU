@@ -92,7 +92,7 @@ int main(void) {
     check("HALT", "HALT", 0x7C000000);
 
     check("ADD", "ADD R3, R1, R2", 0x04C48000);
-    check("SUB", "SUB R2, R1, R2", 0x09088000);
+    check("SUB", "SUB R2, R1, R2", 0x08848000);
     check("MUL", "MUL R3, R1, R2", 0x0CC48000);
 
     check("AND", "AND R3, R1, R2", 0x14C48000);
