@@ -75,3 +75,14 @@ jobs:
             tomato-g1/rtl/p_core.v \
             tomato-g1/rtl/p_core_tb.v
           vvp build/p_core_tb.vvp
+
+      - name: Test E-Core
+        run: |
+          iverilog -g2012 -Wall \
+            -s e_core_tb \
+            -o build/e_core_tb.vvp \
+            tomato-g1/rtl/alu.v \
+            tomato-g1/rtl/registers.v \
+            tomato-g1/rtl/e_core.v \
+            tomato-g1/rtl/e_core_tb.v
+          vvp build/e_core_tb.vvp
