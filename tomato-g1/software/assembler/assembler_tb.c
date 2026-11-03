@@ -3,7 +3,6 @@
 
 #include <stdio.h>
 #include <stdint.h>
-#include <string.h>
 
 static int passed = 0;
 static int failed = 0;
@@ -23,16 +22,17 @@ static void check(
         sizeof(error)
     );
 
-    if (status == 0 && result == expected) {
+    if (status == LETTUCE_ASM_OK &&
+        result == expected) {
         printf("PASS: %s\n", name);
         passed++;
     } else {
         printf("FAIL: %s\n", name);
-        printf("  Expected: %08X\n", expected);
-        printf("  Received: %08X\n", result);
+        printf("Expected: %08X\n", expected);
+        printf("Received: %08X\n", result);
 
-        if (status != 0) {
-            printf("  Error: %s\n", error);
+        if (status != LETTUCE_ASM_OK) {
+            printf("Error: %s\n", error);
         }
 
         failed++;
@@ -53,7 +53,7 @@ static void check_error(
         sizeof(error)
     );
 
-    if (status == -1) {
+    if (status == LETTUCE_ASM_ERROR) {
         printf("PASS: %s\n", name);
         passed++;
     } else {
@@ -116,21 +116,29 @@ int main(void) {
     check("STW", "STW R2, R1, 0", 0x48840000);
 
     check(
-        "Lowercase accepted",
+        "Lowercase",
         "addi r1, r0, 10",
         0x3040000A
     );
 
-    check_empty("Comment ignored", "# this is a comment");
-    check_empty("Empty line ignored", "   ");
+    check(
+        "Hexadecimal immediate",
+        "ADDI R1, R0, 0x10",
+        0x30400010
+    );
+
+    check_empty("Comment", "# comment");
+    check_empty("Empty line", "   ");
+    check_empty("Semicolon comment", "; comment");
 
     check_error("R16 rejected", "ADD R16, R1, R2");
-    check_error("Invalid register rejected", "ADD RX, R1, R2");
-    check_error("Immediate overflow rejected", "ADDI R1, R0, 200000");
-    check_error("Missing operand rejected", "ADD R1, R2");
-    check_error("Unknown opcode rejected", "DIVU R1, R2, R3");
+    check_error("Invalid register", "ADD RX, R1, R2");
+    check_error("Immediate overflow", "ADDI R1, R0, 200000");
+    check_error("Missing operand", "ADD R1, R2");
+    check_error("Extra operand", "ADD R1, R2, R3, R4");
+    check_error("Unknown opcode", "DIVU R1, R2, R3");
 
-    check_error("Branch not yet supported", "BEQ R1, R2, 4");
+    check_error("Branch disabled", "BEQ R1, R2, 4");
 
     printf("\nPASSED: %d\n", passed);
     printf("FAILED: %d\n", failed);
