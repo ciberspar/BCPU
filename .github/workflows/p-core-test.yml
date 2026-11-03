@@ -56,6 +56,15 @@ jobs:
             tomato-g1/rtl/control_unit_tb.v
           vvp build/control_unit_tb.vvp
 
+      - name: Test Memory Controller
+        run: |
+          iverilog -g2012 -Wall \
+            -s memory_controller_tb \
+            -o build/memory_controller_tb.vvp \
+            tomato-g1/rtl/memory_controller.v \
+            tomato-g1/rtl/memory_controller_tb.v
+          vvp build/memory_controller_tb.vvp
+
       - name: Test P-Core
         run: |
           iverilog -g2012 -Wall \
