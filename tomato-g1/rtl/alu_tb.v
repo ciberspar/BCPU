@@ -59,7 +59,6 @@ module alu_tb;
     endtask
 
     initial begin
-
         passed = 0;
         failed = 0;
 
@@ -73,26 +72,16 @@ module alu_tb;
         $display("================================");
 
         check("ADD", OP_ADD, 32'd10, 32'd7, 32'd17);
-
         check("SUB", OP_SUB, 32'd10, 32'd7, 32'd3);
-
         check("AND", OP_AND, 32'hF0F0, 32'h0FF0, 32'h00F0);
-
         check("OR", OP_OR, 32'hF000, 32'h00F0, 32'hF0F0);
-
         check("XOR", OP_XOR, 32'hAAAA, 32'hFFFF, 32'h5555);
-
         check("NOT", OP_NOT, 32'h0000000F, 32'd0, 32'hFFFFFFF0);
-
         check("SHL", OP_SHL, 32'd1, 32'd4, 32'd16);
-
         check("SHR", OP_SHR, 32'h00000080, 32'd2, 32'h00000020);
-
         check("SAR", OP_SAR, 32'h80000000, 32'd4, 32'hF8000000);
-
         check("MUL", OP_MUL, 32'd12, 32'd7, 32'd84);
 
-        // Test zero flag
         operation = OP_ADD;
         a = 32'd5;
         b = 32'hFFFFFFFB;
@@ -112,13 +101,11 @@ module alu_tb;
         $display("FAILED: %0d", failed);
         $display("================================");
 
-        if (failed == 0)
-            $display("ALL ALU TESTS PASSED!");
-        else
-            $display("ALU TESTS FAILED!");
+        if (failed != 0)
+            $fatal(1, "ALU TESTS FAILED!");
 
+        $display("ALL ALU TESTS PASSED!");
         $finish;
-
     end
 
 endmodule
