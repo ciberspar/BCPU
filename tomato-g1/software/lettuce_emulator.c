@@ -1,11 +1,11 @@
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "lettuce_emulator.h"
+
 #include <string.h>
 
-#define MEMORY_SIZE (1024u * 1024u)
-#define REGISTER_COUNT 16
+#define MEMORY_SIZE LETTUCE_MEMORY_SIZE
+#define REGISTER_COUNT LETTUCE_REGISTER_COUNT
+
 #define MAX_STEPS 1000000u
 
 #define OP_NOP   0
@@ -31,15 +31,6 @@
 #define OP_BGE   26
 #define OP_HALT  31
 
-typedef struct {
-    uint32_t registers[REGISTER_COUNT];
-    uint32_t pc;
-    uint8_t memory[MEMORY_SIZE];
-    uint64_t cycles;
-    int halted;
-    int error;
-} LettuceCPU;
-
 static int32_t sign_extend_18(uint32_t value) {
     value &= 0x3FFFFu;
 
@@ -54,12 +45,17 @@ static void cpu_init(LettuceCPU *cpu) {
     memset(cpu, 0, sizeof(*cpu));
 }
 
-static int memory_read32(LettuceCPU *cpu,
-                         uint32_t address,
-                         uint32_t *value) {
-    if ((address & 3u) != 0 ||
+static int memory_read32(
+    LettuceCPU *cpu,
+    uint32_t address,
+    uint32_t *value
+) {
+    if (cpu == NULL || value == NULL ||
+        (address & 3u) != 0 ||
         address > MEMORY_SIZE - 4u) {
-        cpu->error = 1;
+        if (cpu != NULL) {
+            cpu->error = 1;
+        }
         return 0;
     }
 
@@ -72,12 +68,17 @@ static int memory_read32(LettuceCPU *cpu,
     return 1;
 }
 
-static int memory_write32(LettuceCPU *cpu,
-                          uint32_t address,
-                          uint32_t value) {
-    if ((address & 3u) != 0 ||
+static int memory_write32(
+    LettuceCPU *cpu,
+    uint32_t address,
+    uint32_t value
+) {
+    if (cpu == NULL ||
+        (address & 3u) != 0 ||
         address > MEMORY_SIZE - 4u) {
-        cpu->error = 1;
+        if (cpu != NULL) {
+            cpu->error = 1;
+        }
         return 0;
     }
 
@@ -102,7 +103,7 @@ static int cpu_step(LettuceCPU *cpu) {
     uint32_t result = 0;
     uint32_t next_pc;
 
-    if (cpu->halted || cpu->error) {
+    if (cpu == NULL || cpu->halted || cpu->error) {
         return 0;
     }
 
@@ -132,18 +133,15 @@ static int cpu_step(LettuceCPU *cpu) {
             break;
 
         case OP_ADD:
-            result = a + b;
-            cpu->registers[rd] = result;
+            cpu->registers[rd] = a + b;
             break;
 
         case OP_SUB:
-            result = a - b;
-            cpu->registers[rd] = result;
+            cpu->registers[rd] = a - b;
             break;
 
         case OP_MUL:
-            result = a * b;
-            cpu->registers[rd] = result;
+            cpu->registers[rd] = a * b;
             break;
 
         case OP_AND:
@@ -273,35 +271,107 @@ static int cpu_step(LettuceCPU *cpu) {
     return 1;
 }
 
-static int cpu_run(LettuceCPU *cpu) {
+/* API pública */
+
+int lettuce_cpu_init(LettuceCPU *cpu) {
+    if (cpu == NULL) {
+        return LETTUCE_CPU_ERROR;
+    }
+
+    cpu_init(cpu);
+    return LETTUCE_CPU_OK;
+}
+
+int lettuce_cpu_step(LettuceCPU *cpu) {
+    if (cpu == NULL) {
+        return LETTUCE_CPU_ERROR;
+    }
+
+    if (cpu->error) {
+        return LETTUCE_CPU_ERROR;
+    }
+
+    if (cpu->halted) {
+        return LETTUCE_CPU_HALTED;
+    }
+
+    if (!cpu_step(cpu)) {
+        return LETTUCE_CPU_ERROR;
+    }
+
+    return cpu->halted
+        ? LETTUCE_CPU_HALTED
+        : LETTUCE_CPU_OK;
+}
+
+int lettuce_cpu_run(
+    LettuceCPU *cpu,
+    uint64_t max_steps
+) {
     uint64_t steps = 0;
 
+    if (cpu == NULL) {
+        return LETTUCE_CPU_ERROR;
+    }
+
+    if (cpu->error) {
+        return LETTUCE_CPU_ERROR;
+    }
+
+    if (cpu->halted) {
+        return LETTUCE_CPU_HALTED;
+    }
+
+    if (max_steps == 0) {
+        max_steps = MAX_STEPS;
+    }
+
     while (!cpu->halted && !cpu->error) {
-        if (steps >= MAX_STEPS) {
-            cpu->error = 1;
-            break;
+        if (steps >= max_steps) {
+            return LETTUCE_CPU_STEP_LIMIT;
         }
 
         if (!cpu_step(cpu)) {
-            break;
+            return LETTUCE_CPU_ERROR;
         }
 
         steps++;
     }
 
-    return cpu->halted && !cpu->error;
+    return cpu->error
+        ? LETTUCE_CPU_ERROR
+        : LETTUCE_CPU_HALTED;
+}
+
+int lettuce_cpu_is_halted(const LettuceCPU *cpu) {
+    return cpu != NULL && cpu->halted;
+}
+
+int lettuce_cpu_has_error(const LettuceCPU *cpu) {
+    return cpu == NULL || cpu->error;
+}
+
+/* Compatibilidad con los tests anteriores. */
+
+static int cpu_run(LettuceCPU *cpu) {
+    return lettuce_cpu_run(cpu, MAX_STEPS)
+        == LETTUCE_CPU_HALTED;
 }
 
 #ifndef LETTUCE_EMULATOR_NO_MAIN
 
+#include <stdio.h>
+
 int main(void) {
     LettuceCPU cpu;
 
-    cpu_init(&cpu);
+    if (lettuce_cpu_init(&cpu) != LETTUCE_CPU_OK) {
+        return 1;
+    }
 
     printf("BCPU LETTUCE32 EMULATOR\n");
     printf("Memory: %u bytes\n", MEMORY_SIZE);
-    printf("Registers: %d\n", REGISTER_COUNT);
+    printf("Registers: %u\n", REGISTER_COUNT);
     printf("Maximum steps: %u\n", MAX_STEPS);
     printf("Emulator initialized successfully.\n");
     printf("Waiting for a Lettuce32 program.\n");
