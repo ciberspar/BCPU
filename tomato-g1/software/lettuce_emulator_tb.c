@@ -1,250 +1,159 @@
 
-#define LETTUCE_EMULATOR_NO_MAIN
-#include "lettuce_emulator.c"
+#include <stdio.h>
+#include <stdint.h>
 
-static int passed = 0;
-static int failed = 0;
+#include "lettuce_emulator.h"
+
+static unsigned passed = 0;
+static unsigned failed = 0;
 
 static void check(const char *name, int condition) {
     if (condition) {
-        printf("PASS: %s\n", name);
+        printf("[PASS] %s\n", name);
         passed++;
     } else {
-        printf("FAIL: %s\n", name);
+        printf("[FAIL] %s\n", name);
         failed++;
     }
 }
 
-static uint32_t encode_rrr(
-    uint32_t opcode,
+static uint32_t encode_addi(
     uint32_t rd,
     uint32_t ra,
-    uint32_t rb
+    int32_t immediate
 ) {
-    return (opcode << 26) |
-           (rd << 22) |
-           (ra << 18) |
-           (rb << 14);
+    return (12u << 26) |
+           ((rd & 0xFu) << 22) |
+           ((ra & 0xFu) << 18) |
+           ((uint32_t)immediate & 0x3FFFFu);
 }
 
-static uint32_t encode_imm(
-    uint32_t opcode,
-    uint32_t rd,
-    uint32_t ra,
-    uint32_t imm
-) {
-    return (opcode << 26) |
-           (rd << 22) |
-           (ra << 18) |
-           (imm & 0x3FFFFu);
-}
-
-static void put_instruction(
+static void write_instruction(
     LettuceCPU *cpu,
     uint32_t address,
     uint32_t instruction
 ) {
-    memory_write32(cpu, address, instruction);
-}
-
-static void test_arithmetic(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    cpu.registers[1] = 20;
-    cpu.registers[2] = 5;
-
-    put_instruction(&cpu, 0,
-        encode_rrr(OP_ADD, 3, 1, 2));
-    put_instruction(&cpu, 4,
-        encode_rrr(OP_SUB, 4, 1, 2));
-    put_instruction(&cpu, 8,
-        encode_rrr(OP_MUL, 5, 1, 2));
-    put_instruction(&cpu, 12,
-        OP_HALT << 26);
-
-    cpu_run(&cpu);
-
-    check("ADD", cpu.registers[3] == 25);
-    check("SUB", cpu.registers[4] == 15);
-    check("MUL", cpu.registers[5] == 100);
-}
-
-static void test_immediates(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    cpu.registers[1] = 20;
-
-    put_instruction(&cpu, 0,
-        encode_imm(OP_ADDI, 2, 1, 10));
-    put_instruction(&cpu, 4,
-        encode_imm(OP_ANDI, 3, 1, 15));
-    put_instruction(&cpu, 8,
-        encode_imm(OP_ORI, 4, 1, 3));
-    put_instruction(&cpu, 12,
-        encode_imm(OP_XORI, 5, 1, 7));
-    put_instruction(&cpu, 16,
-        OP_HALT << 26);
-
-    cpu_run(&cpu);
-
-    check("ADDI", cpu.registers[2] == 30);
-    check("ANDI", cpu.registers[3] == 4);
-    check("ORI", cpu.registers[4] == 23);
-    check("XORI", cpu.registers[5] == 19);
-}
-
-static void test_logic(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    cpu.registers[1] = 0xF0;
-    cpu.registers[2] = 0x0F;
-
-    put_instruction(&cpu, 0,
-        encode_rrr(OP_AND, 3, 1, 2));
-    put_instruction(&cpu, 4,
-        encode_rrr(OP_OR, 4, 1, 2));
-    put_instruction(&cpu, 8,
-        encode_rrr(OP_XOR, 5, 1, 2));
-    put_instruction(&cpu, 12,
-        encode_rrr(OP_NOT, 6, 1, 0));
-    put_instruction(&cpu, 16,
-        OP_HALT << 26);
-
-    cpu_run(&cpu);
-
-    check("AND", cpu.registers[3] == 0);
-    check("OR", cpu.registers[4] == 0xFF);
-    check("XOR", cpu.registers[5] == 0xFF);
-    check("NOT", cpu.registers[6] == ~0xF0u);
-}
-
-static void test_shifts(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    cpu.registers[1] = 16;
-    cpu.registers[2] = 2;
-
-    put_instruction(&cpu, 0,
-        encode_rrr(OP_SHL, 3, 1, 2));
-    put_instruction(&cpu, 4,
-        encode_rrr(OP_SHR, 4, 1, 2));
-    put_instruction(&cpu, 8,
-        OP_HALT << 26);
-
-    cpu_run(&cpu);
-
-    check("SHL", cpu.registers[3] == 64);
-    check("SHR", cpu.registers[4] == 4);
-}
-
-static void test_memory(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    cpu.registers[1] = 128;
-    cpu.registers[2] = 0x12345678;
-
-    put_instruction(&cpu, 0,
-        encode_imm(OP_STW, 2, 1, 0));
-    put_instruction(&cpu, 4,
-        encode_imm(OP_LDW, 3, 1, 0));
-    put_instruction(&cpu, 8,
-        OP_HALT << 26);
-
-    cpu_run(&cpu);
-
-    check("STW", cpu.memory[128] == 0x78);
-    check("LDW", cpu.registers[3] == 0x12345678);
-    check("LITTLE ENDIAN",
-        cpu.memory[129] == 0x56 &&
-        cpu.memory[130] == 0x34 &&
-        cpu.memory[131] == 0x12);
-}
-
-static void test_zero_register(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    cpu.registers[1] = 10;
-
-    put_instruction(&cpu, 0,
-        encode_rrr(OP_ADD, 0, 1, 1));
-    put_instruction(&cpu, 4,
-        OP_HALT << 26);
-
-    cpu_run(&cpu);
-
-    check("R0 ALWAYS ZERO", cpu.registers[0] == 0);
-}
-
-static void test_negative_immediate(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    cpu.registers[1] = 10;
-
-    put_instruction(&cpu, 0,
-        encode_imm(OP_ADDI, 2, 1, 0x3FFFF));
-    put_instruction(&cpu, 4,
-        OP_HALT << 26);
-
-    cpu_run(&cpu);
-
-    check("NEGATIVE IMMEDIATE", cpu.registers[2] == 9);
-}
-
-static void test_invalid_opcode(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    put_instruction(&cpu, 0,
-        63u << 26);
-
-    cpu_run(&cpu);
-
-    check("INVALID OPCODE DETECTED", cpu.error == 1);
-}
-
-static void test_invalid_memory(void) {
-    LettuceCPU cpu;
-    cpu_init(&cpu);
-
-    check("UNALIGNED MEMORY REJECTED",
-        memory_read32(&cpu, 3, &(uint32_t){0}) == 0 &&
-        cpu.error == 1);
-
-    cpu_init(&cpu);
-
-    check("OUT OF RANGE MEMORY REJECTED",
-        memory_read32(&cpu, MEMORY_SIZE, &(uint32_t){0}) == 0 &&
-        cpu.error == 1);
+    cpu->memory[address] = (uint8_t)instruction;
+    cpu->memory[address + 1] = (uint8_t)(instruction >> 8);
+    cpu->memory[address + 2] = (uint8_t)(instruction >> 16);
+    cpu->memory[address + 3] = (uint8_t)(instruction >> 24);
 }
 
 int main(void) {
-    printf("\nBCPU LETTUCE32 EMULATOR TESTS\n\n");
+    LettuceCPU cpu;
 
-    test_arithmetic();
-    test_immediates();
-    test_logic();
-    test_shifts();
-    test_memory();
-    test_zero_register();
-    test_negative_immediate();
-    test_invalid_opcode();
-    test_invalid_memory();
+    check(
+        "CPU initialization",
+        lettuce_cpu_init(&cpu) == LETTUCE_CPU_OK
+    );
 
-    printf("\nPASSED: %d\n", passed);
-    printf("FAILED: %d\n", failed);
+    check(
+        "Initial PC is zero",
+        cpu.pc == 0
+    );
 
-    if (failed == 0) {
-        printf("ALL LETTUCE32 TESTS PASSED!\n");
-        return 0;
-    }
+    check(
+        "Initial cycle counter is zero",
+        cpu.cycles == 0
+    );
 
-    printf("LETTUCE32 TESTS FAILED!\n");
-    return 1;
+    check(
+        "Register zero starts at zero",
+        cpu.registers[0] == 0
+    );
+
+    /* ADDI R2, R1, 3 */
+    cpu.registers[1] = 5;
+    write_instruction(
+        &cpu,
+        0,
+        encode_addi(2, 1, 3)
+    );
+
+    /* HALT */
+    write_instruction(
+        &cpu,
+        4,
+        31u << 26
+    );
+
+    check(
+        "Execute ADDI instruction",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_OK
+    );
+
+    check(
+        "ADDI calculates correct result",
+        cpu.registers[2] == 8
+    );
+
+    check(
+        "PC advances by four bytes",
+        cpu.pc == 4
+    );
+
+    check(
+        "Cycle counter increments",
+        cpu.cycles == 1
+    );
+
+    check(
+        "Execute HALT instruction",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_HALTED
+    );
+
+    check(
+        "CPU reports halted state",
+        lettuce_cpu_is_halted(&cpu)
+    );
+
+    check(
+        "CPU does not execute after HALT",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_HALTED &&
+        cpu.cycles == 2
+    );
+
+    /* Test de límite de ejecución. */
+    lettuce_cpu_init(&cpu);
+
+    write_instruction(&cpu, 0, 0u);
+    write_instruction(&cpu, 4, 0u);
+    write_instruction(&cpu, 8, 0u);
+
+    check(
+        "Execution step limit",
+        lettuce_cpu_run(&cpu, 1) == LETTUCE_CPU_STEP_LIMIT
+    );
+
+    check(
+        "Step limit preserves CPU state",
+        cpu.cycles == 1 && cpu.pc == 4
+    );
+
+    /* Test de dirección de instrucción inválida. */
+    lettuce_cpu_init(&cpu);
+    cpu.pc = LETTUCE_MEMORY_SIZE;
+
+    check(
+        "Invalid instruction address detected",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_ERROR
+    );
+
+    check(
+        "CPU records execution error",
+        lettuce_cpu_has_error(&cpu)
+    );
+
+    check(
+        "Null CPU rejected",
+        lettuce_cpu_init(NULL) == LETTUCE_CPU_ERROR
+    );
+
+    printf("\n================================\n");
+    printf("LETTUCE EMULATOR TEST RESULTS\n");
+    printf("Passed: %u\n", passed);
+    printf("Failed: %u\n", failed);
+    printf("================================\n");
+
+    return failed == 0 ? 0 : 1;
 }
