@@ -96,10 +96,10 @@ int main(void) {
 
     check(
         "Program copied to memory",
-        memory[20] == program[20] &&
-        memory[21] == program[21] &&
-        memory[22] == program[22] &&
-        memory[23] == program[23]
+        memory[0] == program[20] &&
+        memory[1] == program[21] &&
+        memory[2] == program[22] &&
+        memory[3] == program[23]
     );
 
     check(
