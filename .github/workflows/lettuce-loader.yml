@@ -1,0 +1,53 @@
+
+name: BCPU Tomato G1 - Lettuce Program Loader
+
+on:
+  push:
+    branches:
+      - main
+      - pruebas
+  pull_request:
+    branches:
+      - main
+      - pruebas
+  workflow_dispatch:
+
+jobs:
+  program-loader-tests:
+    name: Lettuce32 Program Loader Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc
+
+      - name: Create build directory
+        run: mkdir -p build
+
+      - name: Compile Program Loader
+        run: |
+          gcc -std=c11 -Wall -Wextra -Wpedantic \
+            -I tomato-g1/software/loader \
+            tomato-g1/software/loader/program_loader.c \
+            tomato-g1/software/loader/program_loader_tb.c \
+            -o build/program_loader_tb
+
+      - name: Run Program Loader Tests
+        run: |
+          ./build/program_loader_tb \
+            | tee build/program_loader.log
+
+          grep -q "ALL PROGRAM LOADER TESTS PASSED!" \
+            build/program_loader.log
+
+      - name: Verification Summary
+        run: |
+          echo "=================================="
+          echo " BCPU TOMATO G1"
+          echo " PROGRAM LOADER: PASSED"
+          echo "=================================="
