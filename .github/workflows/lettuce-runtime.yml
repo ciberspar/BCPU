@@ -1,0 +1,56 @@
+
+name: BCPU Tomato G1 - Lettuce Runtime
+
+on:
+  push:
+    branches:
+      - main
+      - pruebas
+  pull_request:
+    branches:
+      - main
+      - pruebas
+  workflow_dispatch:
+
+jobs:
+  lettuce-runtime-tests:
+    name: Lettuce32 Runtime Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc
+
+      - name: Create build directory
+        run: mkdir -p build
+
+      - name: Compile Lettuce Runtime
+        run: |
+          gcc -std=c11 -Wall -Wextra -Wpedantic \
+            -I tomato-g1/software/loader \
+            -I tomato-g1/software/runtime \
+            tomato-g1/software/loader/program_loader.c \
+            tomato-g1/software/runtime/lettuce_runtime.c \
+            tomato-g1/software/runtime/lettuce_runtime_tb.c \
+            -o build/lettuce_runtime_tb
+
+      - name: Run Lettuce Runtime Tests
+        run: |
+          set -o pipefail
+          ./build/lettuce_runtime_tb \
+            | tee build/lettuce_runtime.log
+
+          grep -q "Failed: 0" \
+            build/lettuce_runtime.log
+
+      - name: Verification Summary
+        run: |
+          echo "=================================="
+          echo " BCPU TOMATO G1"
+          echo " LETTUCE RUNTIME: PASSED"
+          echo "=================================="
