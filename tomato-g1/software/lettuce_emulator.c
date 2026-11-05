@@ -1,5 +1,6 @@
 #include “lettuce_emulator.h”
 
+#include <stdint.h>
 #include <string.h>
 
 #define MEMORY_SIZE LETTUCE_MEMORY_SIZE
