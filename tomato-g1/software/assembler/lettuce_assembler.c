@@ -1,3 +1,4 @@
+
 #include "lettuce_assembler.h"
 
 #include <ctype.h>
@@ -11,7 +12,8 @@ typedef enum {
     TYPE_RRR,
     TYPE_NOT,
     TYPE_RRI,
-    TYPE_MEMORY
+    TYPE_MEMORY,
+    TYPE_BRANCH
 } InstructionType;
 
 typedef struct {
@@ -38,6 +40,10 @@ static const Instruction instruction_set[] = {
     {"XORI", 15, TYPE_RRI},
     {"LDW",  17, TYPE_MEMORY},
     {"STW",  18, TYPE_MEMORY},
+    {"BEQ",  23, TYPE_BRANCH},
+    {"BNE",  24, TYPE_BRANCH},
+    {"BLT",  25, TYPE_BRANCH},
+    {"BGE",  26, TYPE_BRANCH},
     {"HALT", 31, TYPE_NONE}
 };
 
@@ -93,7 +99,6 @@ static int parse_register(
     errno = 0;
 
     char *end = NULL;
-
     long value = strtol(text + 1, &end, 10);
 
     if (errno != 0 ||
@@ -122,7 +127,6 @@ static int parse_immediate(
     errno = 0;
 
     char *end = NULL;
-
     long parsed = strtol(text, &end, 0);
 
     if (errno != 0 ||
@@ -423,6 +427,43 @@ int lettuce_assemble_line(
                     error_buffer,
                     error_buffer_size,
                     "Invalid memory offset"
+                );
+
+                return LETTUCE_ASM_ERROR;
+            }
+
+            encoded |= rd << 22;
+            encoded |= ra << 18;
+            encoded |= (uint32_t)immediate & 0x3FFFF;
+            break;
+
+        case TYPE_BRANCH:
+            if (operand_count != 3) {
+                set_error(
+                    error_buffer,
+                    error_buffer_size,
+                    "Expected RD, RA, OFFSET"
+                );
+
+                return LETTUCE_ASM_ERROR;
+            }
+
+            if (!parse_register(operands[0], &rd) ||
+                !parse_register(operands[1], &ra)) {
+                set_error(
+                    error_buffer,
+                    error_buffer_size,
+                    "Invalid branch register"
+                );
+
+                return LETTUCE_ASM_ERROR;
+            }
+
+            if (!parse_immediate(operands[2], &immediate)) {
+                set_error(
+                    error_buffer,
+                    error_buffer_size,
+                    "Branch offset outside signed 18-bit range"
                 );
 
                 return LETTUCE_ASM_ERROR;
