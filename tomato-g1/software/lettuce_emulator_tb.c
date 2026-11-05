@@ -237,6 +237,88 @@ static void test_memory(void) {
     );
 }
 
+static void test_branches(void) {
+    LettuceCPU cpu;
+
+    /* BEQ: salta cuando los registros son iguales. */
+    lettuce_cpu_init(&cpu);
+    cpu.registers[1] = 10;
+    cpu.registers[2] = 10;
+    write_instruction(&cpu, 0, encode_rri(23, 1, 2, 2));
+
+    check(
+        "BEQ taken",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_OK &&
+        cpu.pc == 12
+    );
+
+    /* BEQ: no salta cuando son diferentes. */
+    lettuce_cpu_init(&cpu);
+    cpu.registers[1] = 10;
+    cpu.registers[2] = 20;
+    write_instruction(&cpu, 0, encode_rri(23, 1, 2, 2));
+
+    check(
+        "BEQ not taken",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_OK &&
+        cpu.pc == 4
+    );
+
+    /* BNE: salta cuando son diferentes. */
+    lettuce_cpu_init(&cpu);
+    cpu.registers[1] = 10;
+    cpu.registers[2] = 20;
+    write_instruction(&cpu, 0, encode_rri(24, 1, 2, 2));
+
+    check(
+        "BNE taken",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_OK &&
+        cpu.pc == 12
+    );
+
+    /* BLT: comparación con signo. */
+    lettuce_cpu_init(&cpu);
+    cpu.registers[1] = 0xFFFFFFFFu;
+    cpu.registers[2] = 1;
+    write_instruction(&cpu, 0, encode_rri(25, 1, 2, 2));
+
+    check(
+        "BLT signed comparison",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_OK &&
+        cpu.pc == 12
+    );
+
+    /* BGE: comparación con signo. */
+    lettuce_cpu_init(&cpu);
+    cpu.registers[1] = 1;
+    cpu.registers[2] = 0xFFFFFFFFu;
+    write_instruction(&cpu, 0, encode_rri(26, 1, 2, 2));
+
+    check(
+        "BGE signed comparison",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_OK &&
+        cpu.pc == 12
+    );
+
+    /* Desplazamiento negativo. */
+    lettuce_cpu_init(&cpu);
+    cpu.registers[1] = 5;
+    cpu.registers[2] = 5;
+    cpu.pc = 8;
+    write_instruction(&cpu, 8, encode_rri(23, 1, 2, -2));
+
+    check(
+        "BEQ negative branch",
+        lettuce_cpu_step(&cpu) == LETTUCE_CPU_OK &&
+        cpu.pc == 4
+    );
+
+    check(
+        "Branch increments cycle counter",
+        cpu.cycles == 1
+    );
+}
+
 static void test_cpu_control(void) {
     LettuceCPU cpu;
 
@@ -324,6 +406,7 @@ int main(void) {
     test_alu();
     test_immediate();
     test_memory();
+    test_branches();
     test_cpu_control();
 
     printf("\n================================\n");
