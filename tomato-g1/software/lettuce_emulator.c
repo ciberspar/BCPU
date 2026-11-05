@@ -1,4 +1,4 @@
-#include “lettuce_emulator.h”
+#include "lettuce_emulator.h"
 
 #include <stdint.h>
 #include <string.h>
