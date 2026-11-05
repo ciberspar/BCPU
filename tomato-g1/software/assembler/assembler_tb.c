@@ -1,3 +1,4 @@
+
 #define LETTUCE_ASSEMBLER_NO_MAIN
 #include "lettuce_assembler.c"
 
@@ -115,6 +116,29 @@ int main(void) {
     check("LDW", "LDW R3, R1, 4", 0x44C40004);
     check("STW", "STW R2, R1, 0", 0x48840000);
 
+    /* Branch instructions */
+
+    check("BEQ", "BEQ R1, R2, 4", 0x5C480004);
+    check("BNE", "BNE R1, R2, 4", 0x60480004);
+    check("BLT", "BLT R1, R2, 4", 0x64480004);
+    check("BGE", "BGE R1, R2, 4", 0x68480004);
+
+    check("BEQ negative offset",
+          "BEQ R1, R2, -1",
+          0x5C4BFFFF);
+
+    check("BNE negative offset",
+          "BNE R1, R2, -4",
+          0x604BFFFC);
+
+    check("Branch lowercase",
+          "blt r1, r2, 8",
+          0x64480008);
+
+    check("Branch hexadecimal offset",
+          "BGE R1, R2, 0x10",
+          0x68480010);
+
     check(
         "Lowercase",
         "addi r1, r0, 10",
@@ -138,7 +162,10 @@ int main(void) {
     check_error("Extra operand", "ADD R1, R2, R3, R4");
     check_error("Unknown opcode", "DIVU R1, R2, R3");
 
-    check_error("Branch disabled", "BEQ R1, R2, 4");
+    check_error("Branch invalid register", "BEQ R16, R2, 4");
+    check_error("Branch immediate overflow", "BEQ R1, R2, 200000");
+    check_error("Branch missing operand", "BNE R1, R2");
+    check_error("Branch extra operand", "BLT R1, R2, 4, 8");
 
     printf("\nPASSED: %d\n", passed);
     printf("FAILED: %d\n", failed);
@@ -148,6 +175,6 @@ int main(void) {
         return 0;
     }
 
-    printf("\nLET TUCE32 ASSEMBLER TESTS FAILED!\n");
+    printf("\nLETTUCE32 ASSEMBLER TESTS FAILED!\n");
     return 1;
 }
