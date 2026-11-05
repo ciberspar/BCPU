@@ -90,13 +90,28 @@ module tomato_e_core (
     wire [31:0] unsigned_immediate =
         {14'b0, immediate};
 
+    // Branch instruction detection
+    wire is_branch =
+        (opcode == OP_BEQ) ||
+        (opcode == OP_BNE) ||
+        (opcode == OP_BLT) ||
+        (opcode == OP_BGE);
+
     // Register file
     wire [31:0] register_a;
     wire [31:0] register_b;
 
+    wire [3:0] read_address_a;
     wire [3:0] read_address_b;
 
+    // Branches read RD and RA.
+    // Normal instructions read RA and RB.
+    // STW reads its data from RD.
+    assign read_address_a =
+        is_branch ? rd : ra;
+
     assign read_address_b =
+        is_branch ? ra :
         (opcode == OP_STW) ? rd : rb;
 
     wire register_write_enable;
@@ -105,7 +120,7 @@ module tomato_e_core (
         .clk(clk),
         .reset(reset),
         .write_enable(register_write_enable),
-        .read_addr_a(ra),
+        .read_addr_a(read_address_a),
         .read_addr_b(read_address_b),
         .write_addr(destination),
         .write_data(writeback_value),
@@ -232,12 +247,10 @@ module tomato_e_core (
 
             case (state)
 
-                // Request instruction
                 FETCH_REQ: begin
                     state <= FETCH_WAIT;
                 end
 
-                // Wait for instruction
                 FETCH_WAIT: begin
                     if (mem_ready) begin
                         instruction <= mem_read_data;
@@ -246,7 +259,6 @@ module tomato_e_core (
                     end
                 end
 
-                // Decode and execute
                 DECODE: begin
 
                     case (opcode)
@@ -271,7 +283,7 @@ module tomato_e_core (
                             state <= MUL_RUN;
                         end
 
-                        // Other register arithmetic
+                        // Register arithmetic
                         OP_ADD, OP_SUB,
                         OP_AND, OP_OR, OP_XOR,
                         OP_NOT, OP_SHL, OP_SHR,
@@ -333,7 +345,7 @@ module tomato_e_core (
 
                         end
 
-                        // Branch if less than
+                        // Branch if less than (signed)
                         OP_BLT: begin
 
                             if ($signed(register_a) <
@@ -345,7 +357,7 @@ module tomato_e_core (
 
                         end
 
-                        // Branch if greater or equal
+                        // Branch if greater or equal (signed)
                         OP_BGE: begin
 
                             if ($signed(register_a) >=
@@ -394,12 +406,10 @@ module tomato_e_core (
 
                 end
 
-                // Request data load
                 LOAD_REQ: begin
                     state <= LOAD_WAIT;
                 end
 
-                // Wait for loaded data
                 LOAD_WAIT: begin
 
                     if (mem_ready) begin
@@ -409,12 +419,10 @@ module tomato_e_core (
 
                 end
 
-                // Request data store
                 STORE_REQ: begin
                     state <= STORE_WAIT;
                 end
 
-                // Wait for completed store
                 STORE_WAIT: begin
 
                     if (mem_ready)
@@ -422,12 +430,10 @@ module tomato_e_core (
 
                 end
 
-                // Write result into register file
                 WRITEBACK: begin
                     state <= FETCH_REQ;
                 end
 
-                // Permanent stopped state
                 HALTED: begin
                     state <= HALTED;
                 end
