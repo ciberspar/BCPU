@@ -10,8 +10,8 @@ original Lettuce instruction set architecture.
 | Processor | Architecture | Target |
 |---|---|---|
 | BCPU Tomato | Lettuce32 | Low-resource systems |
-| BCPU Water | Lettuce32E | Mid-range systems |
-| BCPU Agata | Lettuce64 | High-performance systems |
+| BCPU Water | Lettuce64 | Mid-range systems |
+| BCPU Agata | Lettuce64AA | High-performance systems |
 
 ## Main projects
 
