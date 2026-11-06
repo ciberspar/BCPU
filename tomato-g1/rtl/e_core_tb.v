@@ -45,7 +45,7 @@ module e_core_tb;
         .mem_read_data(mem_read_data),
         .mem_ready(mem_ready),
         .halted(halted),
-         .faulted(faulted),
+        .faulted(faulted),
         .debug_pc(debug_pc)
     );
 
@@ -93,12 +93,12 @@ module e_core_tb;
         else begin
             mem_ready <= 1'b0;
 
-            if (mem_read) begin
+            if (mem_read && !mem_write) begin
                 mem_read_data <= memory[mem_address[9:2]];
                 mem_ready <= 1'b1;
             end
 
-            if (mem_write) begin
+            if (mem_write && !mem_read) begin
                 memory[mem_address[9:2]] <= mem_write_data;
                 mem_ready <= 1'b1;
             end
@@ -237,7 +237,7 @@ module e_core_tb;
         $display(" E-CORE EXTENDED TESTS");
         $display("================================");
 
-        while (!halted && timeout < 1000) begin
+        while (!halted && !faulted && timeout < 1000) begin
             @(negedge clk);
             timeout = timeout + 1;
         end
@@ -326,6 +326,11 @@ module e_core_tb;
         );
 
         check(
+            faulted === 1'b0,
+            "NO EXECUTION FAULT"
+        );
+
+        check(
             debug_pc === 32'd72,
             "PROGRAM COUNTER"
         );
@@ -340,7 +345,7 @@ module e_core_tb;
         $display("CYCLES: %0d", timeout);
         $display("--------------------------------");
 
-        if (failed == 0 && halted) begin
+        if (failed == 0 && halted && !faulted) begin
             $display("ALL E-CORE EXTENDED TESTS PASSED!");
             $finish;
         end
@@ -353,7 +358,7 @@ module e_core_tb;
 
     initial begin
         #15000;
-        if (!halted) begin
+        if (!halted && !faulted) begin
             $display("ERROR: E-CORE TIMEOUT");
             $fatal(1, "E-Core did not halt");
         end
