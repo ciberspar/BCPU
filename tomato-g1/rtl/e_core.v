@@ -15,6 +15,7 @@ module tomato_e_core (
 
     // Processor status
     output wire        halted,
+    output wire        faulted,
     output wire [31:0] debug_pc
 );
 
@@ -64,6 +65,7 @@ module tomato_e_core (
     localparam WRITEBACK  = 4'd7;
     localparam MUL_RUN    = 4'd8;
     localparam HALTED     = 4'd9;
+    localparam FAULTED    = 4'd10;
 
     reg [3:0] state;
 
@@ -104,9 +106,6 @@ module tomato_e_core (
     wire [3:0] read_address_a;
     wire [3:0] read_address_b;
 
-    // Branches read RD and RA.
-    // Normal instructions read RA and RB.
-    // STW reads its data from RD.
     assign read_address_a =
         is_branch ? rd : ra;
 
@@ -154,7 +153,6 @@ module tomato_e_core (
         alu_operation = ALU_ADD;
 
         case (opcode)
-
             OP_ADD: alu_operation = ALU_ADD;
             OP_SUB: alu_operation = ALU_SUB;
             OP_AND: alu_operation = ALU_AND;
@@ -193,15 +191,14 @@ module tomato_e_core (
             default: begin
                 alu_operation = ALU_ADD;
             end
-
         endcase
     end
 
-    // Iterative multiplier
+    // Iterative 32-bit multiplier
     reg [31:0] mul_multiplicand;
     reg [31:0] mul_multiplier;
     reg [31:0] mul_accumulator;
-    reg [5:0]  mul_count;
+    reg [5:0] mul_count;
 
     wire [31:0] mul_next_accumulator =
         mul_accumulator +
@@ -223,11 +220,11 @@ module tomato_e_core (
 
     // Processor status
     assign halted = (state == HALTED);
+    assign faulted = (state == FAULTED);
     assign debug_pc = pc;
 
     // Main processor controller
     always @(posedge clk or posedge reset) begin
-
         if (reset) begin
             state             <= FETCH_REQ;
             pc                <= 32'b0;
@@ -242,9 +239,7 @@ module tomato_e_core (
             mul_accumulator   <= 32'b0;
             mul_count         <= 6'b0;
         end
-
         else begin
-
             case (state)
 
                 FETCH_REQ: begin
@@ -260,7 +255,6 @@ module tomato_e_core (
                 end
 
                 DECODE: begin
-
                     case (opcode)
 
                         OP_NOP: begin
@@ -288,122 +282,100 @@ module tomato_e_core (
                         OP_AND, OP_OR, OP_XOR,
                         OP_NOT, OP_SHL, OP_SHR,
                         OP_SAR: begin
-
                             destination <= rd;
                             writeback_value <= alu_result;
                             state <= WRITEBACK;
-
                         end
 
                         // Immediate arithmetic
                         OP_ADDI, OP_ANDI,
                         OP_ORI, OP_XORI: begin
-
                             destination <= rd;
                             writeback_value <= alu_result;
                             state <= WRITEBACK;
-
                         end
 
                         // Load word
                         OP_LDW: begin
-
-                            effective_address <= alu_result;
-                            destination <= rd;
-                            state <= LOAD_REQ;
-
+                            if (alu_result[1:0] != 2'b00) begin
+                                state <= FAULTED;
+                            end
+                            else begin
+                                effective_address <= alu_result;
+                                destination <= rd;
+                                state <= LOAD_REQ;
+                            end
                         end
 
                         // Store word
                         OP_STW: begin
-
-                            effective_address <= alu_result;
-                            store_value <= register_b;
-                            state <= STORE_REQ;
-
+                            if (alu_result[1:0] != 2'b00) begin
+                                state <= FAULTED;
+                            end
+                            else begin
+                                effective_address <= alu_result;
+                                store_value <= register_b;
+                                state <= STORE_REQ;
+                            end
                         end
 
                         // Branch if equal
                         OP_BEQ: begin
-
                             if (register_a == register_b)
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
-
                         end
 
                         // Branch if not equal
                         OP_BNE: begin
-
                             if (register_a != register_b)
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
-
                         end
 
                         // Branch if less than (signed)
                         OP_BLT: begin
-
                             if ($signed(register_a) <
                                 $signed(register_b))
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
-
                         end
 
                         // Branch if greater or equal (signed)
                         OP_BGE: begin
-
                             if ($signed(register_a) >=
                                 $signed(register_b))
                                 pc <= pc +
                                     (signed_immediate << 2);
 
                             state <= FETCH_REQ;
-
                         end
 
                         // Unsupported instruction
                         default: begin
-                            state <= FETCH_REQ;
+                            state <= FAULTED;
                         end
-
                     endcase
                 end
 
                 // Run multiplication for 32 cycles
                 MUL_RUN: begin
-
                     if (mul_count == 6'd31) begin
-
-                        writeback_value <=
-                            mul_next_accumulator;
-
+                        writeback_value <= mul_next_accumulator;
                         state <= WRITEBACK;
-
                     end
-
                     else begin
-
-                        mul_accumulator <=
-                            mul_next_accumulator;
-
-                        mul_multiplicand <=
-                            mul_multiplicand << 1;
-
-                        mul_multiplier <=
-                            mul_multiplier >> 1;
-
+                        mul_accumulator <= mul_next_accumulator;
+                        mul_multiplicand <= mul_multiplicand << 1;
+                        mul_multiplier <= mul_multiplier >> 1;
                         mul_count <= mul_count + 1'b1;
-
                     end
-
                 end
 
                 LOAD_REQ: begin
@@ -411,12 +383,10 @@ module tomato_e_core (
                 end
 
                 LOAD_WAIT: begin
-
                     if (mem_ready) begin
                         writeback_value <= mem_read_data;
                         state <= WRITEBACK;
                     end
-
                 end
 
                 STORE_REQ: begin
@@ -424,10 +394,8 @@ module tomato_e_core (
                 end
 
                 STORE_WAIT: begin
-
                     if (mem_ready)
                         state <= FETCH_REQ;
-
                 end
 
                 WRITEBACK: begin
@@ -438,10 +406,13 @@ module tomato_e_core (
                     state <= HALTED;
                 end
 
-                default: begin
-                    state <= FETCH_REQ;
+                FAULTED: begin
+                    state <= FAULTED;
                 end
 
+                default: begin
+                    state <= FAULTED;
+                end
             endcase
         end
     end
