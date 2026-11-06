@@ -16,6 +16,8 @@ module tomato_g1_top (
     // Processor status
     output wire p_halted,
     output wire e_halted,
+    output wire p_faulted,
+    output wire e_faulted,
 
     output wire [31:0] p_debug_pc,
     output wire [31:0] e_debug_pc,
@@ -54,6 +56,7 @@ module tomato_g1_top (
         .mem_ready(p_mem_ready),
 
         .halted(p_halted),
+        .faulted(p_faulted),
         .debug_pc(p_debug_pc)
     );
 
@@ -70,6 +73,7 @@ module tomato_g1_top (
         .mem_ready(e_mem_ready),
 
         .halted(e_halted),
+        .faulted(e_faulted),
         .debug_pc(e_debug_pc)
     );
 
