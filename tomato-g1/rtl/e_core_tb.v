@@ -47,13 +47,11 @@ module e_core_tb;
         .debug_pc(debug_pc)
     );
 
-    // Clock
     initial begin
         clk = 1'b0;
         forever #5 clk = ~clk;
     end
 
-    // Immediate instruction encoder
     function [31:0] encode_i;
         input [5:0] opcode;
         input [3:0] rd;
@@ -69,7 +67,6 @@ module e_core_tb;
         end
     endfunction
 
-    // Register instruction encoder
     function [31:0] encode_r;
         input [5:0] opcode;
         input [3:0] rd;
@@ -106,7 +103,6 @@ module e_core_tb;
         end
     end
 
-    // Test helper
     task check;
         input condition;
         input [255:0] test_name;
@@ -122,7 +118,6 @@ module e_core_tb;
         end
     endtask
 
-    // Main tests
     initial begin
 
         reset = 1'b1;
@@ -155,18 +150,17 @@ module e_core_tb;
             OP_MUL, 4'd3, 4'd1, 4'd2
         );
 
-        // Store R2 at memory address 64
+        // Store R2 at address 128 (memory[32])
         memory[3] = encode_i(
-            OP_STW, 4'd2, 4'd0, 18'd64
+            OP_STW, 4'd2, 4'd0, 18'd128
         );
 
-        // Load memory address 64 into R4
+        // Load address 128 into R4
         memory[4] = encode_i(
-            OP_LDW, 4'd4, 4'd0, 18'd64
+            OP_LDW, 4'd4, 4'd0, 18'd128
         );
 
         // BEQ R1, R1, +1
-        // Must skip instruction 6
         memory[5] = encode_i(
             OP_BEQ, 4'd1, 4'd1, 18'd1
         );
@@ -176,7 +170,6 @@ module e_core_tb;
         );
 
         // BNE R1, R2, +1
-        // Must skip instruction 8
         memory[7] = encode_i(
             OP_BNE, 4'd1, 4'd2, 18'd1
         );
@@ -186,7 +179,6 @@ module e_core_tb;
         );
 
         // BLT R1, R2, +1
-        // Must skip instruction 10
         memory[9] = encode_i(
             OP_BLT, 4'd1, 4'd2, 18'd1
         );
@@ -196,7 +188,6 @@ module e_core_tb;
         );
 
         // BGE R2, R1, +1
-        // Must skip instruction 12
         memory[11] = encode_i(
             OP_BGE, 4'd2, 4'd1, 18'd1
         );
@@ -205,8 +196,7 @@ module e_core_tb;
             OP_ADDI, 4'd8, 4'd0, 18'd99
         );
 
-        // BNE R1, R1, +1
-        // Must NOT branch
+        // BNE R1, R1, +1 (not taken)
         memory[13] = encode_i(
             OP_BNE, 4'd1, 4'd1, 18'd1
         );
@@ -216,8 +206,7 @@ module e_core_tb;
             OP_ADDI, 4'd9, 4'd0, 18'd7
         );
 
-        // BGE R1, R2, +1
-        // Must NOT branch
+        // BGE R1, R2, +1 (not taken)
         memory[15] = encode_i(
             OP_BGE, 4'd1, 4'd2, 18'd1
         );
@@ -227,7 +216,7 @@ module e_core_tb;
             OP_ADDI, 4'd10, 4'd0, 18'd8
         );
 
-        // Stop processor
+        // HALT
         memory[17] = {
             OP_HALT,
             26'b0
@@ -246,7 +235,6 @@ module e_core_tb;
         $display(" E-CORE EXTENDED TESTS");
         $display("================================");
 
-        // Wait for HALT
         while (!halted && timeout < 1000) begin
             @(negedge clk);
             timeout = timeout + 1;
@@ -278,7 +266,7 @@ module e_core_tb;
         // =================================
 
         check(
-            memory[16] === 32'd12,
+            memory[32] === 32'd12,
             "STW MEMORY WRITE"
         );
 
@@ -361,7 +349,6 @@ module e_core_tb;
 
     end
 
-    // Global timeout
     initial begin
         #15000;
         if (!halted) begin
