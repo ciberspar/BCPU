@@ -15,6 +15,7 @@ module e_core_tb;
     reg mem_ready;
 
     wire halted;
+    wire faulted;
     wire [31:0] debug_pc;
 
     reg [31:0] memory [0:255];
@@ -44,6 +45,7 @@ module e_core_tb;
         .mem_read_data(mem_read_data),
         .mem_ready(mem_ready),
         .halted(halted),
+         .faulted(faulted),
         .debug_pc(debug_pc)
     );
 
