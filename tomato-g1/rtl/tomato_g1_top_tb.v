@@ -35,6 +35,9 @@ module tomato_g1_top_tb;
     integer instruction_fetches = 0;
     integer data_reads = 0;
 
+    // Estado anterior del bus para detectar nuevas transacciones
+    reg previous_mem_read = 0;
+
     always #5 clk = ~clk;
 
     tomato_g1_top dut (
@@ -61,7 +64,7 @@ module tomato_g1_top_tb;
         .scheduler_active_core(scheduler_active_core)
     );
 
-    // Simple synchronous memory model
+    // Memoria sincronica de prueba
     always @(posedge clk) begin
         mem_ready <= 1'b0;
 
@@ -75,17 +78,22 @@ module tomato_g1_top_tb;
         end
     end
 
-    // Count external instruction and data reads
+    // Contar solo el flanco inicial de cada lectura
     always @(posedge clk) begin
         if (reset) begin
             instruction_fetches <= 0;
             data_reads <= 0;
+            previous_mem_read <= 1'b0;
         end
-        else if (mem_read && !mem_write) begin
-            if (mem_execute)
-                instruction_fetches <= instruction_fetches + 1;
-            else
-                data_reads <= data_reads + 1;
+        else begin
+            if (mem_read && !previous_mem_read && !mem_write) begin
+                if (mem_execute)
+                    instruction_fetches <= instruction_fetches + 1;
+                else
+                    data_reads <= data_reads + 1;
+            end
+
+            previous_mem_read <= mem_read;
         end
     end
 
@@ -112,7 +120,7 @@ module tomato_g1_top_tb;
         for (i = 0; i < 64; i = i + 1)
             memory[i] = 32'h00000000;
 
-        // HALT instruction at address zero
+        // HALT para ambos nucleos
         memory[0] = 32'h7C000000;
 
         repeat (4) @(negedge clk);
@@ -135,15 +143,12 @@ module tomato_g1_top_tb;
             end
         end
 
-        // P-Core status
         check(p_halted, "P-CORE FETCHED HALT");
         check(!p_faulted, "P-CORE HAS NO FAULT");
 
-        // E-Core status
         check(e_halted, "E-CORE FETCHED HALT");
         check(!e_faulted, "E-CORE HAS NO FAULT");
 
-        // Program counters
         check(
             p_debug_pc == 32'd4,
             "P-CORE PROGRAM COUNTER"
@@ -154,13 +159,11 @@ module tomato_g1_top_tb;
             "E-CORE PROGRAM COUNTER"
         );
 
-        // Bus safety
         check(
             !(mem_read && mem_write),
             "MEMORY READ/WRITE NEVER ACTIVE TOGETHER"
         );
 
-        // Execute signal
         check(
             instruction_fetches == 2,
             "TWO INSTRUCTION FETCHES ON SHARED BUS"
@@ -176,13 +179,11 @@ module tomato_g1_top_tb;
             "EXECUTE SIGNAL INACTIVE WHEN IDLE"
         );
 
-        // Scheduler status
         check(
             !scheduler_busy,
             "SCHEDULER IDLE AFTER BOTH CORES HALT"
         );
 
-        // Final report
         $display("--------------------------------");
         $display("INSTRUCTION FETCHES: %0d", instruction_fetches);
         $display("DATA READS: %0d", data_reads);
