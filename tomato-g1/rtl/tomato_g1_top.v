@@ -7,6 +7,7 @@ module tomato_g1_top (
 
     // External memory interface
     output wire mem_read,
+    output wire mem_execute,
     output wire mem_write,
     output wire [31:0] mem_address,
     output wire [31:0] mem_write_data,
@@ -29,6 +30,7 @@ module tomato_g1_top (
 
     // P-Core bus
     wire p_mem_read;
+    wire p_mem_execute;
     wire p_mem_write;
     wire [31:0] p_mem_address;
     wire [31:0] p_mem_write_data;
@@ -37,6 +39,7 @@ module tomato_g1_top (
 
     // E-Core bus
     wire e_mem_read;
+    wire e_mem_execute;
     wire e_mem_write;
     wire [31:0] e_mem_address;
     wire [31:0] e_mem_write_data;
@@ -49,6 +52,7 @@ module tomato_g1_top (
         .reset(reset),
 
         .mem_read(p_mem_read),
+        .mem_execute(p_mem_execute),
         .mem_write(p_mem_write),
         .mem_address(p_mem_address),
         .mem_write_data(p_mem_write_data),
@@ -66,6 +70,7 @@ module tomato_g1_top (
         .reset(reset),
 
         .mem_read(e_mem_read),
+        .mem_execute(e_mem_execute),
         .mem_write(e_mem_write),
         .mem_address(e_mem_address),
         .mem_write_data(e_mem_write_data),
@@ -84,6 +89,7 @@ module tomato_g1_top (
 
         // P-Core
         .p_mem_read(p_mem_read),
+        .p_mem_execute(p_mem_execute),
         .p_mem_write(p_mem_write),
         .p_mem_address(p_mem_address),
         .p_mem_write_data(p_mem_write_data),
@@ -92,6 +98,7 @@ module tomato_g1_top (
 
         // E-Core
         .e_mem_read(e_mem_read),
+        .e_mem_execute(e_mem_execute),
         .e_mem_write(e_mem_write),
         .e_mem_address(e_mem_address),
         .e_mem_write_data(e_mem_write_data),
@@ -100,6 +107,7 @@ module tomato_g1_top (
 
         // External memory
         .mem_read(mem_read),
+        .mem_execute(mem_execute),
         .mem_write(mem_write),
         .mem_address(mem_address),
         .mem_write_data(mem_write_data),
