@@ -1,4 +1,3 @@
-
 module tomato_memory_controller (
     input  wire        clk,
     input  wire        reset,
@@ -6,7 +5,7 @@ module tomato_memory_controller (
     // Solicitud del procesador
     input  wire        mem_read,
     input  wire        mem_write,
-    input  wire [31:0] mem_address,
+    input  wire [33:0] mem_address,
     input  wire [31:0] mem_write_data,
     output reg  [31:0] mem_read_data,
     output reg         mem_ready,
@@ -14,11 +13,14 @@ module tomato_memory_controller (
     // Interfaz hacia el sistema de memoria
     output reg         ram_read,
     output reg         ram_write,
-    output reg  [31:0] ram_address,
+    output reg  [33:0] ram_address,
     output reg  [31:0] ram_write_data,
     input  wire [31:0] ram_read_data,
     input  wire        ram_ready
 );
+
+    // 34-bit physical address space:
+    // 2^34 bytes = 16 GiB.
 
     localparam IDLE  = 2'd0;
     localparam READ  = 2'd1;
@@ -33,7 +35,7 @@ module tomato_memory_controller (
             mem_ready      <= 1'b0;
             ram_read       <= 1'b0;
             ram_write      <= 1'b0;
-            ram_address    <= 32'b0;
+            ram_address    <= 34'b0;
             ram_write_data <= 32'b0;
         end else begin
             mem_ready <= 1'b0;
@@ -41,12 +43,14 @@ module tomato_memory_controller (
             ram_write <= 1'b0;
 
             case (state)
+
                 IDLE: begin
                     if (mem_read) begin
                         ram_address <= mem_address;
                         ram_read    <= 1'b1;
                         state       <= READ;
-                    end else if (mem_write) begin
+                    end
+                    else if (mem_write) begin
                         ram_address    <= mem_address;
                         ram_write_data <= mem_write_data;
                         ram_write      <= 1'b1;
@@ -72,6 +76,7 @@ module tomato_memory_controller (
                 default: begin
                     state <= IDLE;
                 end
+
             endcase
         end
     end
