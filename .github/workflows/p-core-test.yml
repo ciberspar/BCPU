@@ -72,6 +72,21 @@ jobs:
             tomato-g1/rtl/memory_controller_tb.v
           vvp build/memory_controller_tb.vvp
 
+      # LETTUCE MMU
+      - name: Test Lettuce MMU
+        run: |
+          iverilog -g2012 -Wall \
+            -s lettuce_mmu_tb \
+            -o build/lettuce_mmu_tb.vvp \
+            tomato-g1/rtl/lettuce_mmc.v \
+            tomato-g1/rtl/lettuce_mmc_tb.v
+
+          set -o pipefail
+          vvp build/lettuce_mmu_tb.vvp | tee build/lettuce_mmu.log
+
+          grep -q "ALL LETTUCE MMU TESTS PASSED!" \
+            build/lettuce_mmu.log
+
       # P-CORE
       - name: Test P-Core
         run: |
@@ -127,6 +142,7 @@ jobs:
             tomato-g1/rtl/core_scheduler.v \
             tomato-g1/rtl/core_scheduler_contention_tb.v
 
+          set -o pipefail
           vvp build/core_scheduler_contention_tb.vvp | tee build/contention.log
 
           grep -q "ALL CONTENTION TESTS PASSED!" build/contention.log
@@ -215,6 +231,7 @@ jobs:
           echo "REGISTERS: PASSED"
           echo "CONTROL UNIT: PASSED"
           echo "MEMORY CONTROLLER: PASSED"
+          echo "LETTUCE MMU: PASSED"
           echo "P-CORE: PASSED"
           echo "E-CORE: PASSED"
           echo "CORE SCHEDULER: PASSED"
