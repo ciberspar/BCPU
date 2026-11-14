@@ -7,6 +7,7 @@ module p_core_tb;
     reg reset;
 
     wire mem_read;
+    wire mem_execute;
     wire mem_write;
     wire [31:0] mem_address;
     wire [31:0] mem_write_data;
@@ -24,6 +25,8 @@ module p_core_tb;
     integer timeout;
     integer passed;
     integer failed;
+    integer instruction_fetches;
+    integer data_reads;
 
     localparam OP_ADDI = 6'd12;
     localparam OP_LDW  = 6'd17;
@@ -35,6 +38,7 @@ module p_core_tb;
         .reset(reset),
 
         .mem_read(mem_read),
+        .mem_execute(mem_execute),
         .mem_write(mem_write),
         .mem_address(mem_address),
         .mem_write_data(mem_write_data),
@@ -87,6 +91,20 @@ module p_core_tb;
         end
     end
 
+    // Count instruction fetches and normal data reads
+    always @(posedge clk) begin
+        if (reset) begin
+            instruction_fetches <= 0;
+            data_reads <= 0;
+        end
+        else if (mem_read && !mem_write) begin
+            if (mem_execute)
+                instruction_fetches <= instruction_fetches + 1;
+            else
+                data_reads <= data_reads + 1;
+        end
+    end
+
     task check;
         input condition;
         input [255:0] test_name;
@@ -115,9 +133,7 @@ module p_core_tb;
         for (i = 0; i < 256; i = i + 1)
             memory[i] = 32'b0;
 
-        // =================================
         // PROGRAM
-        // =================================
 
         // R1 = 5
         memory[0] = encode_i(
@@ -129,7 +145,7 @@ module p_core_tb;
             OP_ADDI, 4'd2, 4'd0, 18'd12
         );
 
-        // Store R2 at address 128 (memory[32])
+        // Store R2 at address 128
         memory[2] = encode_i(
             OP_STW, 4'd2, 4'd0, 18'd128
         );
@@ -145,10 +161,7 @@ module p_core_tb;
             26'b0
         };
 
-        // =================================
         // RESET RELEASE
-        // =================================
-
         #20;
         @(negedge clk);
         reset = 1'b0;
@@ -165,9 +178,7 @@ module p_core_tb;
 
         #1;
 
-        // =================================
         // REGISTER TESTS
-        // =================================
 
         check(
             dut.registers.registers[1] === 32'd5,
@@ -189,18 +200,31 @@ module p_core_tb;
             "REGISTER R0"
         );
 
-        // =================================
         // MEMORY TESTS
-        // =================================
 
         check(
             memory[32] === 32'd12,
             "STW MEMORY WRITE"
         );
 
-        // =================================
+        // EXECUTION SIGNAL TESTS
+
+        check(
+            instruction_fetches == 5,
+            "EXACTLY FIVE INSTRUCTION FETCHES"
+        );
+
+        check(
+            data_reads == 1,
+            "ONE NORMAL DATA READ"
+        );
+
+        check(
+            mem_execute === 1'b0,
+            "EXECUTE SIGNAL INACTIVE AFTER HALT"
+        );
+
         // PROCESSOR STATUS
-        // =================================
 
         check(
             halted === 1'b1,
@@ -217,11 +241,11 @@ module p_core_tb;
             "PROGRAM COUNTER"
         );
 
-        // =================================
         // FINAL REPORT
-        // =================================
 
         $display("--------------------------------");
+        $display("INSTRUCTION FETCHES: %0d", instruction_fetches);
+        $display("DATA READS: %0d", data_reads);
         $display("PASSED: %0d", passed);
         $display("FAILED: %0d", failed);
         $display("CYCLES: %0d", timeout);
@@ -246,3 +270,4 @@ module p_core_tb;
     end
 
 endmodule
+
