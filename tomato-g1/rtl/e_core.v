@@ -7,6 +7,7 @@ module tomato_e_core (
 
     // Shared instruction and data memory bus
     output wire        mem_read,
+    output wire        mem_execute,
     output wire        mem_write,
     output wire [31:0] mem_address,
     output wire [31:0] mem_write_data,
@@ -208,6 +209,10 @@ module tomato_e_core (
     assign mem_read =
         (state == FETCH_REQ) ||
         (state == LOAD_REQ);
+
+    // Identifies instruction-fetch requests for MMU permissions.
+    assign mem_execute =
+        (state == FETCH_REQ);
 
     assign mem_write =
         (state == STORE_REQ);
