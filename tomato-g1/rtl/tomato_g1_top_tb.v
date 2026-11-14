@@ -7,6 +7,7 @@ module tomato_g1_top_tb;
     reg reset = 1;
 
     wire mem_read;
+    wire mem_execute;
     wire mem_write;
     wire [31:0] mem_address;
     wire [31:0] mem_write_data;
@@ -31,6 +32,11 @@ module tomato_g1_top_tb;
     integer cycles;
     integer passed = 0;
     integer failed = 0;
+    integer instruction_fetches = 0;
+    integer data_reads = 0;
+
+    // Detectar el inicio de cada transaccion
+    reg previous_mem_read = 0;
 
     always #5 clk = ~clk;
 
@@ -39,6 +45,7 @@ module tomato_g1_top_tb;
         .reset(reset),
 
         .mem_read(mem_read),
+        .mem_execute(mem_execute),
         .mem_write(mem_write),
         .mem_address(mem_address),
         .mem_write_data(mem_write_data),
@@ -57,7 +64,7 @@ module tomato_g1_top_tb;
         .scheduler_active_core(scheduler_active_core)
     );
 
-    // Simple synchronous memory model
+    // Memoria sincronica de prueba
     always @(posedge clk) begin
         mem_ready <= 1'b0;
 
@@ -68,6 +75,25 @@ module tomato_g1_top_tb;
         else if (mem_write && !mem_read) begin
             memory[mem_address[7:2]] <= mem_write_data;
             mem_ready <= 1'b1;
+        end
+    end
+
+    // Contar una sola vez por transaccion
+    always @(posedge clk) begin
+        if (reset) begin
+            instruction_fetches <= 0;
+            data_reads <= 0;
+            previous_mem_read <= 1'b0;
+        end
+        else begin
+            if (mem_read && !previous_mem_read && !mem_write) begin
+                if (mem_execute)
+                    instruction_fetches <= instruction_fetches + 1;
+                else
+                    data_reads <= data_reads + 1;
+            end
+
+            previous_mem_read <= mem_read;
         end
     end
 
@@ -94,7 +120,7 @@ module tomato_g1_top_tb;
         for (i = 0; i < 64; i = i + 1)
             memory[i] = 32'h00000000;
 
-        // HALT instruction at address zero
+        // HALT para ambos nucleos
         memory[0] = 32'h7C000000;
 
         repeat (4) @(negedge clk);
@@ -117,41 +143,63 @@ module tomato_g1_top_tb;
             end
         end
 
-        // P-Core status
-        check(p_halted, "P-Core fetched HALT");
-        check(!p_faulted, "P-Core has no fault");
+        // Estado P-Core
+        check(p_halted, "P-CORE FETCHED HALT");
+        check(!p_faulted, "P-CORE HAS NO FAULT");
 
-        // E-Core status
-        check(e_halted, "E-Core fetched HALT");
-        check(!e_faulted, "E-Core has no fault");
+        // Estado E-Core
+        check(e_halted, "E-CORE FETCHED HALT");
+        check(!e_faulted, "E-CORE HAS NO FAULT");
 
-        // Program counters
+        // Contadores de programa
         check(
             p_debug_pc == 32'd4,
-            "P-Core program counter"
+            "P-CORE PROGRAM COUNTER"
         );
 
         check(
             e_debug_pc == 32'd4,
-            "E-Core program counter"
+            "E-CORE PROGRAM COUNTER"
         );
 
-        // Bus safety
+        // Seguridad del bus
         check(
             !(mem_read && mem_write),
-            "Memory read/write are never active together"
+            "MEMORY READ/WRITE NEVER ACTIVE TOGETHER"
         );
 
-        // Scheduler status
+        // Busqueda de instrucciones
+        check(
+            instruction_fetches == 2,
+            "TWO INSTRUCTION FETCHES ON SHARED BUS"
+        );
+
+        // Lecturas normales
+        check(
+            data_reads == 0,
+            "NO NORMAL DATA READS"
+        );
+
+        // Señal execute
+        check(
+            mem_execute === 1'b0,
+            "EXECUTE SIGNAL INACTIVE WHEN IDLE"
+        );
+
+        // Scheduler
         check(
             !scheduler_busy,
-            "Scheduler is idle after both cores halt"
+            "SCHEDULER IDLE AFTER BOTH CORES HALT"
         );
 
+        // Resultado final
         $display("--------------------------------");
-        $display("Cycles: %0d", cycles);
+        $display("INSTRUCTION FETCHES: %0d", instruction_fetches);
+        $display("DATA READS: %0d", data_reads);
+        $display("CYCLES: %0d", cycles);
         $display("PASSED: %0d", passed);
         $display("FAILED: %0d", failed);
+        $display("--------------------------------");
 
         if (failed == 0) begin
             $display("ALL TOMATO G1 SYSTEM TESTS PASSED!");
