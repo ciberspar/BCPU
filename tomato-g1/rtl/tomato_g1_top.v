@@ -1,48 +1,111 @@
 
 `timescale 1ns/1ps
 
-module tomato_g1_top_tb;
+module tomato_g1_top (
+    input wire clk,
+    input wire reset,
 
-    reg clk = 0;
-    reg reset = 1;
+    // External physical memory interface
+    output wire mem_read,
+    output wire mem_execute,
+    output wire mem_write,
+    output wire [33:0] mem_address,
+    output wire [31:0] mem_write_data,
+    input wire [31:0] mem_read_data,
+    input wire mem_ready,
 
-    wire mem_read;
-    wire mem_execute;
-    wire mem_write;
-    wire [33:0] mem_address;
-    wire [31:0] mem_write_data;
+    // Processor status
+    output wire p_halted,
+    output wire e_halted,
+    output wire p_faulted,
+    output wire e_faulted,
 
-    reg [31:0] mem_read_data = 0;
-    reg mem_ready = 0;
+    output wire [31:0] p_debug_pc,
+    output wire [31:0] e_debug_pc,
 
-    wire p_halted;
-    wire e_halted;
-    wire p_faulted;
-    wire e_faulted;
+    // Scheduler status
+    output wire scheduler_busy,
+    output wire scheduler_active_core
+);
 
-    wire [31:0] p_debug_pc;
-    wire [31:0] e_debug_pc;
+    // P-Core memory bus
+    wire p_mem_read;
+    wire p_mem_execute;
+    wire p_mem_write;
+    wire [31:0] p_mem_address;
+    wire [31:0] p_mem_write_data;
+    wire [31:0] p_mem_read_data;
+    wire p_mem_ready;
 
-    wire scheduler_busy;
-    wire scheduler_active_core;
+    // E-Core memory bus
+    wire e_mem_read;
+    wire e_mem_execute;
+    wire e_mem_write;
+    wire [31:0] e_mem_address;
+    wire [31:0] e_mem_write_data;
+    wire [31:0] e_mem_read_data;
+    wire e_mem_ready;
 
-    reg [31:0] memory [0:63];
-
-    integer i;
-    integer cycles;
-    integer passed = 0;
-    integer failed = 0;
-    integer instruction_fetches = 0;
-    integer data_reads = 0;
-
-    reg previous_mem_read = 0;
-
-    always #5 clk = ~clk;
-
-    tomato_g1_top dut (
+    // Performance core
+    tomato_p_core p_core (
         .clk(clk),
         .reset(reset),
 
+        .mem_read(p_mem_read),
+        .mem_execute(p_mem_execute),
+        .mem_write(p_mem_write),
+        .mem_address(p_mem_address),
+        .mem_write_data(p_mem_write_data),
+        .mem_read_data(p_mem_read_data),
+        .mem_ready(p_mem_ready),
+
+        .halted(p_halted),
+        .faulted(p_faulted),
+        .debug_pc(p_debug_pc)
+    );
+
+    // Efficiency core
+    tomato_e_core e_core (
+        .clk(clk),
+        .reset(reset),
+
+        .mem_read(e_mem_read),
+        .mem_execute(e_mem_execute),
+        .mem_write(e_mem_write),
+        .mem_address(e_mem_address),
+        .mem_write_data(e_mem_write_data),
+        .mem_read_data(e_mem_read_data),
+        .mem_ready(e_mem_ready),
+
+        .halted(e_halted),
+        .faulted(e_faulted),
+        .debug_pc(e_debug_pc)
+    );
+
+    // Shared memory scheduler
+    tomato_core_scheduler scheduler (
+        .clk(clk),
+        .reset(reset),
+
+        // P-Core
+        .p_mem_read(p_mem_read),
+        .p_mem_execute(p_mem_execute),
+        .p_mem_write(p_mem_write),
+        .p_mem_address(p_mem_address),
+        .p_mem_write_data(p_mem_write_data),
+        .p_mem_read_data(p_mem_read_data),
+        .p_mem_ready(p_mem_ready),
+
+        // E-Core
+        .e_mem_read(e_mem_read),
+        .e_mem_execute(e_mem_execute),
+        .e_mem_write(e_mem_write),
+        .e_mem_address(e_mem_address),
+        .e_mem_write_data(e_mem_write_data),
+        .e_mem_read_data(e_mem_read_data),
+        .e_mem_ready(e_mem_ready),
+
+        // External memory
         .mem_read(mem_read),
         .mem_execute(mem_execute),
         .mem_write(mem_write),
@@ -51,163 +114,9 @@ module tomato_g1_top_tb;
         .mem_read_data(mem_read_data),
         .mem_ready(mem_ready),
 
-        .p_halted(p_halted),
-        .e_halted(e_halted),
-        .p_faulted(p_faulted),
-        .e_faulted(e_faulted),
-
-        .p_debug_pc(p_debug_pc),
-        .e_debug_pc(e_debug_pc),
-
-        .scheduler_busy(scheduler_busy),
-        .scheduler_active_core(scheduler_active_core)
+        // Status
+        .busy(scheduler_busy),
+        .active_core(scheduler_active_core)
     );
-
-    // Synchronous test memory.
-    always @(posedge clk) begin
-        mem_ready <= 1'b0;
-
-        if (mem_read && !mem_write) begin
-            mem_read_data <= memory[mem_address[7:2]];
-            mem_ready <= 1'b1;
-        end
-        else if (mem_write && !mem_read) begin
-            memory[mem_address[7:2]] <= mem_write_data;
-            mem_ready <= 1'b1;
-        end
-    end
-
-    // Count only the start of each read transaction.
-    always @(posedge clk) begin
-        if (reset) begin
-            instruction_fetches <= 0;
-            data_reads <= 0;
-            previous_mem_read <= 1'b0;
-        end
-        else begin
-            if (mem_read && !previous_mem_read && !mem_write) begin
-                if (mem_execute)
-                    instruction_fetches <= instruction_fetches + 1;
-                else
-                    data_reads <= data_reads + 1;
-            end
-
-            previous_mem_read <= mem_read;
-        end
-    end
-
-    task check;
-        input condition;
-        input [255:0] test_name;
-        begin
-            if (condition === 1'b1) begin
-                $display("PASS: %0s", test_name);
-                passed = passed + 1;
-            end
-            else begin
-                $display("FAIL: %0s", test_name);
-                failed = failed + 1;
-            end
-        end
-    endtask
-
-    initial begin
-        $display("================================");
-        $display(" BCPU TOMATO G1 SYSTEM TEST");
-        $display("================================");
-
-        for (i = 0; i < 64; i = i + 1)
-            memory[i] = 32'h00000000;
-
-        // HALT instruction for both cores.
-        memory[0] = 32'h7C000000;
-
-        repeat (4) @(negedge clk);
-        reset = 0;
-
-        cycles = 0;
-
-        while ((!p_halted || !e_halted) &&
-               (!p_faulted && !e_faulted) &&
-               cycles < 100) begin
-
-            @(negedge clk);
-            #1;
-
-            cycles = cycles + 1;
-
-            if (mem_read && mem_write) begin
-                $display("FAIL: Read and write active together");
-                failed = failed + 1;
-            end
-        end
-
-        check(p_halted, "P-CORE FETCHED HALT");
-        check(!p_faulted, "P-CORE HAS NO FAULT");
-
-        check(e_halted, "E-CORE FETCHED HALT");
-        check(!e_faulted, "E-CORE HAS NO FAULT");
-
-        check(
-            p_debug_pc == 32'd4,
-            "P-CORE PROGRAM COUNTER"
-        );
-
-        check(
-            e_debug_pc == 32'd4,
-            "E-CORE PROGRAM COUNTER"
-        );
-
-        check(
-            !(mem_read && mem_write),
-            "MEMORY READ/WRITE NEVER ACTIVE TOGETHER"
-        );
-
-        check(
-            instruction_fetches == 2,
-            "TWO INSTRUCTION FETCHES ON SHARED BUS"
-        );
-
-        check(
-            data_reads == 0,
-            "NO NORMAL DATA READS"
-        );
-
-        check(
-            mem_execute === 1'b0,
-            "EXECUTE SIGNAL INACTIVE WHEN IDLE"
-        );
-
-        check(
-            !scheduler_busy,
-            "SCHEDULER IDLE AFTER BOTH CORES HALT"
-        );
-
-        $display("--------------------------------");
-        $display("INSTRUCTION FETCHES: %0d", instruction_fetches);
-        $display("DATA READS: %0d", data_reads);
-        $display("CYCLES: %0d", cycles);
-        $display("PASSED: %0d", passed);
-        $display("FAILED: %0d", failed);
-        $display("--------------------------------");
-
-        if (failed == 0) begin
-            $display("ALL TOMATO G1 SYSTEM TESTS PASSED!");
-            $finish;
-        end
-        else begin
-            $display("TOMATO G1 SYSTEM TESTS FAILED!");
-            $fatal(1, "System verification failed");
-        end
-    end
-
-    initial begin
-        #5000;
-        if (failed == 0 &&
-            (!p_halted || !e_halted)) begin
-            $display("ERROR: SYSTEM TEST TIMEOUT");
-            $fatal(1, "System test timed out");
-        end
-    end
 
 endmodule
