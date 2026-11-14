@@ -27,12 +27,19 @@ module lettuce_mmu_tb;
     wire fault;
     wire [2:0] fault_code;
 
-    integer passed;
+    integer tests;
     integer failed;
 
-    lettuce_mmu uut (
+    localparam FAULT_NONE       = 3'd0;
+    localparam FAULT_UNMAPPED   = 3'd1;
+    localparam FAULT_PERMISSION = 3'd2;
+    localparam FAULT_OVERFLOW   = 3'd3;
+    localparam FAULT_ACCESS     = 3'd4;
+
+    lettuce_mmu dut (
         .clk(clk),
         .reset(reset),
+
         .req_valid(req_valid),
         .virtual_address(virtual_address),
 
@@ -55,33 +62,9 @@ module lettuce_mmu_tb;
         .fault_code(fault_code)
     );
 
-    always #5 clk = ~clk;
-
-    task check_result;
-        input [8*40-1:0] test_name;
-        input expected_fault;
-        input [2:0] expected_code;
-        begin
-            #2;
-
-            if (fault === expected_fault &&
-                fault_code === expected_code) begin
-                $display("[PASS] %0s", test_name);
-                passed = passed + 1;
-            end else begin
-                $display("[FAIL] %0s", test_name);
-                $display("       fault esperado=%b recibido=%b",
-                         expected_fault, fault);
-                $display("       code esperado=%d recibido=%d",
-                         expected_code, fault_code);
-                failed = failed + 1;
-            end
-        end
-    endtask
-
     initial begin
         clk = 0;
-        reset = 1;
+        reset = 0;
 
         req_valid = 0;
         virtual_address = 0;
@@ -92,106 +75,216 @@ module lettuce_mmu_tb;
 
         map_enable = 1;
         virtual_base = 32'h00001000;
-        virtual_limit = 33'h000002000;
-        physical_base = 34'h000010000;
+        virtual_limit = 33'h00002000;
+        physical_base = 34'h00010000;
 
         permission_read = 1;
         permission_write = 1;
         permission_execute = 1;
 
-        passed = 0;
+        tests = 0;
         failed = 0;
 
-        #10;
-        reset = 0;
+        $display("--------------------------------");
+        $display("LETTUCE MMU TESTS");
+        $display("--------------------------------");
 
-        // 1. Lectura válida
+        // Test 1: Valid read.
         req_valid = 1;
         virtual_address = 32'h00001020;
         access_read = 1;
-        access_write = 0;
-        access_execute = 0;
+        #10;
 
-        check_result("Lectura valida", 0, 0);
+        check_result(
+            "Valid read",
+            1, 0, FAULT_NONE, 34'h00010020
+        );
 
-        if (physical_address !== 34'h000010020) begin
-            $display("[FAIL] Direccion fisica incorrecta");
-            failed = failed + 1;
-        end else begin
-            $display("[PASS] Traduccion de direccion");
-            passed = passed + 1;
-        end
-
-        // 2. Escritura válida
+        // Test 2: Valid write.
         access_read = 0;
         access_write = 1;
+        virtual_address = 32'h00001100;
+        #10;
 
-        check_result("Escritura valida", 0, 0);
+        check_result(
+            "Valid write",
+            1, 0, FAULT_NONE, 34'h00010100
+        );
 
-        // 3. Ejecución válida
+        // Test 3: Valid execute.
         access_write = 0;
         access_execute = 1;
+        virtual_address = 32'h00001200;
+        #10;
 
-        check_result("Ejecucion valida", 0, 0);
+        check_result(
+            "Valid execute",
+            1, 0, FAULT_NONE, 34'h00010200
+        );
 
-        // 4. Dirección fuera de la región
+        // Test 4: Address below mapping.
         access_execute = 0;
         access_read = 1;
+        virtual_address = 32'h00000FFF;
+        #10;
+
+        check_result(
+            "Address below mapping",
+            1, 1, FAULT_UNMAPPED, 34'b0
+        );
+
+        // Test 5: Address at exclusive limit.
         virtual_address = 32'h00002000;
+        #10;
 
-        check_result("Direccion no mapeada", 1, 1);
+        check_result(
+            "Address at exclusive limit",
+            1, 1, FAULT_UNMAPPED, 34'b0
+        );
 
-        // 5. Permiso de escritura denegado
+        // Test 6: Read permission denied.
         virtual_address = 32'h00001020;
+        permission_read = 0;
+        #10;
+
+        check_result(
+            "Read permission denied",
+            1, 1, FAULT_PERMISSION, 34'b0
+        );
+
+        // Test 7: Write permission denied.
+        permission_read = 1;
         access_read = 0;
         access_write = 1;
         permission_write = 0;
+        #10;
 
-        check_result("Permiso de escritura denegado", 1, 2);
+        check_result(
+            "Write permission denied",
+            1, 1, FAULT_PERMISSION, 34'b0
+        );
 
-        // 6. Permiso de ejecución denegado
-        permission_write = 1;
-        permission_execute = 0;
+        // Test 8: Execute permission denied.
         access_write = 0;
         access_execute = 1;
+        permission_write = 1;
+        permission_execute = 0;
+        #10;
 
-        check_result("Permiso de ejecucion denegado", 1, 2);
+        check_result(
+            "Execute permission denied",
+            1, 1, FAULT_PERMISSION, 34'b0
+        );
 
-        // 7. Acceso inválido: dos tipos simultáneos
+        // Test 9: No access type selected.
+        access_execute = 0;
         permission_execute = 1;
+        #10;
+
+        check_result(
+            "No access type selected",
+            1, 1, FAULT_ACCESS, 34'b0
+        );
+
+        // Test 10: Multiple access types selected.
         access_read = 1;
         access_execute = 1;
+        #10;
 
-        check_result("Combinacion de acceso invalida", 1, 4);
+        check_result(
+            "Multiple access types",
+            1, 1, FAULT_ACCESS, 34'b0
+        );
 
-        // 8. Mapeo desactivado
+        // Test 11: Mapping disabled.
         access_read = 1;
         access_execute = 0;
         map_enable = 0;
+        #10;
 
-        check_result("Mapeo desactivado", 1, 1);
+        check_result(
+            "Mapping disabled",
+            1, 1, FAULT_UNMAPPED, 34'b0
+        );
 
-        // 9. Desbordamiento de dirección física
+        // Test 12: Physical address overflow.
         map_enable = 1;
         physical_base = 34'h3FFFFFFF0;
         virtual_address = 32'h00001020;
+        #10;
 
-        check_result("Desbordamiento fisico", 1, 3);
+        check_result(
+            "Physical address overflow",
+            1, 1, FAULT_OVERFLOW, 34'b0
+        );
 
-        // Resultado final
-        $display("");
-        $display("================================");
-        $display(" LETTUCE MMU TEST RESULTS");
-        $display("================================");
-        $display("Passed: %0d", passed);
-        $display("Failed: %0d", failed);
+        // Test 13: Request idle.
+        req_valid = 0;
+        #10;
 
-        if (failed == 0)
+        check_result(
+            "Request idle",
+            0, 0, FAULT_NONE, 34'b0
+        );
+
+        // Test 14: Last valid address in mapping.
+        req_valid = 1;
+        physical_base = 34'h00010000;
+        virtual_address = 32'h00001FFF;
+        access_read = 1;
+        access_execute = 0;
+        #10;
+
+        check_result(
+            "Last address in mapping",
+            1, 0, FAULT_NONE, 34'h00010FFF
+        );
+
+        $display("--------------------------------");
+        $display("TESTS: %0d", tests);
+        $display("FAILED: %0d", failed);
+
+        if (failed == 0) begin
             $display("ALL LETTUCE MMU TESTS PASSED!");
-        else
-            $display("LETUCCE MMU TESTS FAILED!");
+        end
+        else begin
+            $display("LETTUCE MMU TESTS FAILED!");
+        end
 
         $finish;
     end
+
+    task check_result;
+        input [255:0] test_name;
+        input expected_valid;
+        input expected_fault;
+        input [2:0] expected_code;
+        input [33:0] expected_address;
+
+        begin
+            tests = tests + 1;
+
+            if (
+                resp_valid !== expected_valid ||
+                fault !== expected_fault ||
+                fault_code !== expected_code ||
+                physical_address !== expected_address
+            ) begin
+                failed = failed + 1;
+
+                $display(
+                    "FAIL: %0s | valid=%b fault=%b code=%d address=%h",
+                    test_name,
+                    resp_valid,
+                    fault,
+                    fault_code,
+                    physical_address
+                );
+            end
+            else begin
+                $display("PASS: %0s", test_name);
+            end
+        end
+    endtask
 
 endmodule
