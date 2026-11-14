@@ -5,7 +5,6 @@ module tomato_core_scheduler (
     input wire clk,
     input wire reset,
 
-    // P-Core interface
     input wire p_mem_read,
     input wire p_mem_execute,
     input wire p_mem_write,
@@ -14,7 +13,6 @@ module tomato_core_scheduler (
     output reg [31:0] p_mem_read_data,
     output reg p_mem_ready,
 
-    // E-Core interface
     input wire e_mem_read,
     input wire e_mem_execute,
     input wire e_mem_write,
@@ -23,11 +21,10 @@ module tomato_core_scheduler (
     output reg [31:0] e_mem_read_data,
     output reg e_mem_ready,
 
-    // External memory bus
     output reg mem_read,
     output reg mem_execute,
     output reg mem_write,
-    output reg [31:0] mem_address,
+    output reg [33:0] mem_address,
     output reg [31:0] mem_write_data,
     input wire [31:0] mem_read_data,
     input wire mem_ready,
@@ -49,23 +46,20 @@ module tomato_core_scheduler (
     reg saved_read;
     reg saved_execute;
     reg saved_write;
-    reg [31:0] saved_address;
+    reg [33:0] saved_address;
     reg [31:0] saved_write_data;
 
-    // One-entry pending request queue
     reg pending_valid;
     reg pending_owner;
     reg pending_read;
     reg pending_execute;
     reg pending_write;
-    reg [31:0] pending_address;
+    reg [33:0] pending_address;
     reg [31:0] pending_write_data;
 
-    // Treat unconnected execute inputs as inactive.
     wire p_execute_active = (p_mem_execute === 1'b1);
     wire e_execute_active = (e_mem_execute === 1'b1);
 
-    // Request detection
     wire p_request =
         p_mem_read || p_mem_write || p_execute_active;
 
@@ -104,7 +98,6 @@ module tomato_core_scheduler (
         end
     end
 
-    // Transaction management and pending queue
     always @(posedge clk or posedge reset) begin
         if (reset) begin
             transaction_active <= 1'b0;
@@ -114,7 +107,7 @@ module tomato_core_scheduler (
             saved_read <= 1'b0;
             saved_execute <= 1'b0;
             saved_write <= 1'b0;
-            saved_address <= 32'b0;
+            saved_address <= 34'b0;
             saved_write_data <= 32'b0;
 
             pending_valid <= 1'b0;
@@ -122,7 +115,7 @@ module tomato_core_scheduler (
             pending_read <= 1'b0;
             pending_execute <= 1'b0;
             pending_write <= 1'b0;
-            pending_address <= 32'b0;
+            pending_address <= 34'b0;
             pending_write_data <= 32'b0;
 
             p_mem_read_data <= 32'b0;
@@ -134,35 +127,29 @@ module tomato_core_scheduler (
             p_mem_ready <= 1'b0;
             e_mem_ready <= 1'b0;
 
-            // Capture a request from the other core
-            // while a transaction is in progress.
+            // Capture the other core's request.
             if (transaction_active && !pending_valid) begin
-
-                if (transaction_owner == CORE_P &&
-                    e_request) begin
-
+                if (transaction_owner == CORE_P && e_request) begin
                     pending_valid <= 1'b1;
                     pending_owner <= CORE_E;
                     pending_read <= e_mem_read;
                     pending_execute <= e_execute_active;
                     pending_write <= e_mem_write;
-                    pending_address <= e_mem_address;
+                    pending_address <= {2'b00, e_mem_address};
                     pending_write_data <= e_mem_write_data;
                 end
-                else if (transaction_owner == CORE_E &&
-                    p_request) begin
-
+                else if (transaction_owner == CORE_E && p_request) begin
                     pending_valid <= 1'b1;
                     pending_owner <= CORE_P;
                     pending_read <= p_mem_read;
                     pending_execute <= p_execute_active;
                     pending_write <= p_mem_write;
-                    pending_address <= p_mem_address;
+                    pending_address <= {2'b00, p_mem_address};
                     pending_write_data <= p_mem_write_data;
                 end
             end
 
-            // Complete current transaction
+            // Complete the active transaction.
             if (transaction_active && mem_ready) begin
                 transaction_active <= 1'b0;
 
@@ -176,10 +163,8 @@ module tomato_core_scheduler (
                 end
             end
 
-            // Start the next transaction
+            // Start the next transaction.
             if (!transaction_active) begin
-
-                // Pending request has priority
                 if (pending_valid) begin
                     transaction_active <= 1'b1;
                     transaction_owner <= pending_owner;
@@ -193,8 +178,6 @@ module tomato_core_scheduler (
 
                     pending_valid <= 1'b0;
                 end
-
-                // Otherwise arbitrate new requests
                 else if (grant_valid) begin
                     transaction_active <= 1'b1;
                     transaction_owner <= grant_owner;
@@ -204,17 +187,16 @@ module tomato_core_scheduler (
                         saved_read <= p_mem_read;
                         saved_execute <= p_execute_active;
                         saved_write <= p_mem_write;
-                        saved_address <= p_mem_address;
+                        saved_address <= {2'b00, p_mem_address};
                         saved_write_data <= p_mem_write_data;
 
-                        // Save simultaneous E-Core request
                         if (e_request) begin
                             pending_valid <= 1'b1;
                             pending_owner <= CORE_E;
                             pending_read <= e_mem_read;
                             pending_execute <= e_execute_active;
                             pending_write <= e_mem_write;
-                            pending_address <= e_mem_address;
+                            pending_address <= {2'b00, e_mem_address};
                             pending_write_data <= e_mem_write_data;
                         end
                     end
@@ -222,17 +204,16 @@ module tomato_core_scheduler (
                         saved_read <= e_mem_read;
                         saved_execute <= e_execute_active;
                         saved_write <= e_mem_write;
-                        saved_address <= e_mem_address;
+                        saved_address <= {2'b00, e_mem_address};
                         saved_write_data <= e_mem_write_data;
 
-                        // Save simultaneous P-Core request
                         if (p_request) begin
                             pending_valid <= 1'b1;
                             pending_owner <= CORE_P;
                             pending_read <= p_mem_read;
                             pending_execute <= p_execute_active;
                             pending_write <= p_mem_write;
-                            pending_address <= p_mem_address;
+                            pending_address <= {2'b00, p_mem_address};
                             pending_write_data <= p_mem_write_data;
                         end
                     end
@@ -241,12 +222,12 @@ module tomato_core_scheduler (
         end
     end
 
-    // External memory bus
+    // Shared physical memory bus.
     always @(*) begin
         mem_read = 1'b0;
         mem_execute = 1'b0;
         mem_write = 1'b0;
-        mem_address = 32'b0;
+        mem_address = 34'b0;
         mem_write_data = 32'b0;
 
         if (transaction_active) begin
