@@ -7,6 +7,7 @@ module e_core_tb;
     reg reset;
 
     wire mem_read;
+    wire mem_execute;
     wire mem_write;
     wire [31:0] mem_address;
     wire [31:0] mem_write_data;
@@ -25,6 +26,9 @@ module e_core_tb;
     integer passed;
     integer failed;
 
+    integer instruction_fetches;
+    integer data_reads;
+
     localparam OP_MUL  = 6'd3;
     localparam OP_ADDI = 6'd12;
     localparam OP_LDW  = 6'd17;
@@ -38,17 +42,21 @@ module e_core_tb;
     tomato_e_core dut (
         .clk(clk),
         .reset(reset),
+
         .mem_read(mem_read),
+        .mem_execute(mem_execute),
         .mem_write(mem_write),
         .mem_address(mem_address),
         .mem_write_data(mem_write_data),
         .mem_read_data(mem_read_data),
         .mem_ready(mem_ready),
+
         .halted(halted),
         .faulted(faulted),
         .debug_pc(debug_pc)
     );
 
+    // Clock generator
     initial begin
         clk = 1'b0;
         forever #5 clk = ~clk;
@@ -105,6 +113,20 @@ module e_core_tb;
         end
     end
 
+    // Instruction fetch and data read counters
+    always @(posedge clk) begin
+        if (reset) begin
+            instruction_fetches <= 0;
+            data_reads <= 0;
+        end
+        else if (mem_read && !mem_write) begin
+            if (mem_execute)
+                instruction_fetches <= instruction_fetches + 1;
+            else
+                data_reads <= data_reads + 1;
+        end
+    end
+
     task check;
         input condition;
         input [255:0] test_name;
@@ -129,6 +151,9 @@ module e_core_tb;
         passed = 0;
         failed = 0;
         timeout = 0;
+
+        instruction_fetches = 0;
+        data_reads = 0;
 
         for (i = 0; i < 256; i = i + 1)
             memory[i] = 32'b0;
@@ -312,6 +337,25 @@ module e_core_tb;
         );
 
         // =================================
+        // EXECUTE SIGNAL
+        // =================================
+
+        check(
+            instruction_fetches == 14,
+            "FOURTEEN INSTRUCTION FETCHES"
+        );
+
+        check(
+            data_reads == 1,
+            "ONE NORMAL DATA READ"
+        );
+
+        check(
+            mem_execute === 1'b0,
+            "EXECUTE SIGNAL INACTIVE AFTER HALT"
+        );
+
+        // =================================
         // PROCESSOR STATUS
         // =================================
 
@@ -340,6 +384,8 @@ module e_core_tb;
         // =================================
 
         $display("--------------------------------");
+        $display("INSTRUCTION FETCHES: %0d", instruction_fetches);
+        $display("DATA READS: %0d", data_reads);
         $display("PASSED: %0d", passed);
         $display("FAILED: %0d", failed);
         $display("CYCLES: %0d", timeout);
