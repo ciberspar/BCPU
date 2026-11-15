@@ -7,11 +7,13 @@ module tomato_e_core (
 
     // Shared instruction and data memory bus
     output wire        mem_read,
+    output wire        mem_execute,
     output wire        mem_write,
     output wire [31:0] mem_address,
     output wire [31:0] mem_write_data,
     input  wire [31:0] mem_read_data,
     input  wire        mem_ready,
+    input  wire        mem_fault,
 
     // Processor status
     output wire        halted,
@@ -209,6 +211,9 @@ module tomato_e_core (
         (state == FETCH_REQ) ||
         (state == LOAD_REQ);
 
+    assign mem_execute =
+        (state == FETCH_REQ);
+
     assign mem_write =
         (state == STORE_REQ);
 
@@ -247,7 +252,10 @@ module tomato_e_core (
                 end
 
                 FETCH_WAIT: begin
-                    if (mem_ready) begin
+                    if (mem_fault) begin
+                        state <= FAULTED;
+                    end
+                    else if (mem_ready) begin
                         instruction <= mem_read_data;
                         pc <= pc + 32'd4;
                         state <= DECODE;
@@ -357,7 +365,6 @@ module tomato_e_core (
                             state <= FETCH_REQ;
                         end
 
-                        // Unsupported instruction
                         default: begin
                             state <= FAULTED;
                         end
@@ -383,7 +390,10 @@ module tomato_e_core (
                 end
 
                 LOAD_WAIT: begin
-                    if (mem_ready) begin
+                    if (mem_fault) begin
+                        state <= FAULTED;
+                    end
+                    else if (mem_ready) begin
                         writeback_value <= mem_read_data;
                         state <= WRITEBACK;
                     end
@@ -394,8 +404,12 @@ module tomato_e_core (
                 end
 
                 STORE_WAIT: begin
-                    if (mem_ready)
+                    if (mem_fault) begin
+                        state <= FAULTED;
+                    end
+                    else if (mem_ready) begin
                         state <= FETCH_REQ;
+                    end
                 end
 
                 WRITEBACK: begin
