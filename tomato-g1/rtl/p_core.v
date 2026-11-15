@@ -11,6 +11,7 @@ module tomato_p_core (
     output wire [31:0] mem_write_data,
     input  wire [31:0] mem_read_data,
     input  wire        mem_ready,
+    input  wire        mem_fault,
 
     // Estado del procesador
     output wire        halted,
@@ -195,7 +196,6 @@ assign mem_read =
     (state == FETCH_REQ) ||
     (state == LOAD_REQ);
 
-// Identifica las lecturas de instrucciones
 assign mem_execute =
     (state == FETCH_REQ);
 
@@ -232,7 +232,10 @@ always @(posedge clk or posedge reset) begin
             end
 
             FETCH_WAIT: begin
-                if (mem_ready) begin
+                if (mem_fault) begin
+                    state <= FAULTED;
+                end
+                else if (mem_ready) begin
                     instruction <= mem_read_data;
                     pc <= pc + 32'd4;
                     state <= DECODE;
@@ -330,7 +333,6 @@ always @(posedge clk or posedge reset) begin
                         state <= FETCH_REQ;
                     end
 
-                    // Any unsupported opcode is a fault.
                     default: begin
                         state <= FAULTED;
                     end
@@ -342,7 +344,10 @@ always @(posedge clk or posedge reset) begin
             end
 
             LOAD_WAIT: begin
-                if (mem_ready) begin
+                if (mem_fault) begin
+                    state <= FAULTED;
+                end
+                else if (mem_ready) begin
                     writeback_value <= mem_read_data;
                     state <= WRITEBACK;
                 end
@@ -353,8 +358,12 @@ always @(posedge clk or posedge reset) begin
             end
 
             STORE_WAIT: begin
-                if (mem_ready)
+                if (mem_fault) begin
+                    state <= FAULTED;
+                end
+                else if (mem_ready) begin
                     state <= FETCH_REQ;
+                end
             end
 
             WRITEBACK: begin
