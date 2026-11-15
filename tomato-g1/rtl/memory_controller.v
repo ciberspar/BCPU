@@ -1,16 +1,20 @@
+
+`timescale 1ns/1ps
+
 module tomato_memory_controller (
     input  wire        clk,
     input  wire        reset,
 
-    // Solicitud del procesador
+    // Physical memory request
     input  wire        mem_read,
     input  wire        mem_write,
     input  wire [33:0] mem_address,
     input  wire [31:0] mem_write_data,
+
     output reg  [31:0] mem_read_data,
     output reg         mem_ready,
 
-    // Interfaz hacia el sistema de memoria
+    // Physical RAM interface
     output reg         ram_read,
     output reg         ram_write,
     output reg  [33:0] ram_address,
@@ -19,41 +23,54 @@ module tomato_memory_controller (
     input  wire        ram_ready
 );
 
-    // 34-bit physical address space:
-    // 2^34 bytes = 16 GiB.
-
+    // 34-bit physical address space: 16 GiB.
     localparam IDLE  = 2'd0;
     localparam READ  = 2'd1;
     localparam WRITE = 2'd2;
 
     reg [1:0] state;
 
+    // Accept each request only once until it is released.
+    reg request_armed;
+
+    wire request_active = mem_read || mem_write;
+
     always @(posedge clk or posedge reset) begin
         if (reset) begin
             state          <= IDLE;
+            request_armed  <= 1'b1;
+
             mem_read_data  <= 32'b0;
             mem_ready      <= 1'b0;
+
             ram_read       <= 1'b0;
             ram_write      <= 1'b0;
             ram_address    <= 34'b0;
             ram_write_data <= 32'b0;
-        end else begin
+        end
+        else begin
             mem_ready <= 1'b0;
             ram_read  <= 1'b0;
             ram_write <= 1'b0;
 
+            // Rearm after the requester releases its bus signals.
+            if (!request_active)
+                request_armed <= 1'b1;
+
             case (state)
 
                 IDLE: begin
-                    if (mem_read) begin
-                        ram_address <= mem_address;
-                        ram_read    <= 1'b1;
-                        state       <= READ;
+                    if (request_armed && mem_read) begin
+                        ram_address   <= mem_address;
+                        ram_read      <= 1'b1;
+                        request_armed <= 1'b0;
+                        state         <= READ;
                     end
-                    else if (mem_write) begin
+                    else if (request_armed && mem_write) begin
                         ram_address    <= mem_address;
                         ram_write_data <= mem_write_data;
                         ram_write      <= 1'b1;
+                        request_armed  <= 1'b0;
                         state          <= WRITE;
                     end
                 end
