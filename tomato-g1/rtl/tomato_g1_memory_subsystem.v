@@ -14,6 +14,7 @@ module tomato_g1_memory_subsystem (
 
     output wire [31:0] mem_read_data,
     output wire mem_ready,
+    output wire mem_fault,
 
     // MMU mapping configuration
     input wire map_enable,
@@ -26,7 +27,6 @@ module tomato_g1_memory_subsystem (
     input wire permission_execute,
 
     // Fault reporting
-    output wire mmu_fault,
     output wire [2:0] mmu_fault_code,
 
     // Physical RAM interface
@@ -81,7 +81,7 @@ module tomato_g1_memory_subsystem (
 
         .resp_valid(mmu_resp_valid),
         .physical_address(physical_address),
-        .fault(mmu_fault),
+        .fault(mem_fault),
         .fault_code(mmu_fault_code)
     );
 
@@ -89,18 +89,17 @@ module tomato_g1_memory_subsystem (
     assign controller_read =
         request_valid &&
         mmu_resp_valid &&
-        !mmu_fault &&
+        !mem_fault &&
         mem_read;
 
     assign controller_write =
         request_valid &&
         mmu_resp_valid &&
-        !mmu_fault &&
+        !mem_fault &&
         mem_write;
 
-    // A fault completes the bus request and is reported separately.
-    assign mem_ready = mmu_fault || controller_ready;
-
+    // Normal completion and translation faults are separate signals.
+    assign mem_ready = controller_ready;
     assign mem_read_data = controller_read_data;
 
     // Physical memory controller
