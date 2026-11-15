@@ -5,6 +5,7 @@ module tomato_core_scheduler (
     input wire clk,
     input wire reset,
 
+    // P-Core virtual memory interface
     input wire p_mem_read,
     input wire p_mem_execute,
     input wire p_mem_write,
@@ -12,7 +13,9 @@ module tomato_core_scheduler (
     input wire [31:0] p_mem_write_data,
     output reg [31:0] p_mem_read_data,
     output reg p_mem_ready,
+    output reg p_mem_fault,
 
+    // E-Core virtual memory interface
     input wire e_mem_read,
     input wire e_mem_execute,
     input wire e_mem_write,
@@ -20,15 +23,20 @@ module tomato_core_scheduler (
     input wire [31:0] e_mem_write_data,
     output reg [31:0] e_mem_read_data,
     output reg e_mem_ready,
+    output reg e_mem_fault,
 
+    // Virtual memory bus to MMU
     output reg mem_read,
     output reg mem_execute,
     output reg mem_write,
-    output reg [33:0] mem_address,
+    output reg [31:0] mem_address,
     output reg [31:0] mem_write_data,
+
     input wire [31:0] mem_read_data,
     input wire mem_ready,
+    input wire mem_fault,
 
+    // Scheduler status
     output wire busy,
     output wire active_core
 );
@@ -36,46 +44,64 @@ module tomato_core_scheduler (
     localparam CORE_P = 1'b0;
     localparam CORE_E = 1'b1;
 
+    // Active transaction
     reg transaction_active;
     reg transaction_owner;
+
+    // Round-robin state
     reg last_grant;
 
+    // Arbitration
     reg grant_valid;
     reg grant_owner;
 
+    // Saved active request
     reg saved_read;
     reg saved_execute;
     reg saved_write;
-    reg [33:0] saved_address;
+    reg [31:0] saved_address;
     reg [31:0] saved_write_data;
 
+    // One pending request
     reg pending_valid;
     reg pending_owner;
     reg pending_read;
     reg pending_execute;
     reg pending_write;
-    reg [33:0] pending_address;
+    reg [31:0] pending_address;
     reg [31:0] pending_write_data;
 
+    // Treat only explicit logic-high as an active request.
     wire p_execute_active = (p_mem_execute === 1'b1);
     wire e_execute_active = (e_mem_execute === 1'b1);
 
     wire p_request =
-        p_mem_read || p_mem_write || p_execute_active;
+        (p_mem_read === 1'b1) ||
+        (p_mem_write === 1'b1) ||
+        p_execute_active;
 
     wire e_request =
-        e_mem_read || e_mem_write || e_execute_active;
+        (e_mem_read === 1'b1) ||
+        (e_mem_write === 1'b1) ||
+        e_execute_active;
+
+    // A transaction completes normally or with a memory fault.
+    wire transaction_complete =
+        (mem_ready === 1'b1) ||
+        (mem_fault === 1'b1);
 
     assign busy = transaction_active;
     assign active_core = transaction_owner;
 
-    // Round-robin arbitration
+    // Round-robin arbitration.
     always @(*) begin
         grant_valid = 1'b0;
         grant_owner = last_grant;
 
         if (!transaction_active && !pending_valid) begin
+
             if (last_grant == CORE_P) begin
+
                 if (e_request) begin
                     grant_valid = 1'b1;
                     grant_owner = CORE_E;
@@ -84,8 +110,10 @@ module tomato_core_scheduler (
                     grant_valid = 1'b1;
                     grant_owner = CORE_P;
                 end
+
             end
             else begin
+
                 if (p_request) begin
                     grant_valid = 1'b1;
                     grant_owner = CORE_P;
@@ -94,20 +122,25 @@ module tomato_core_scheduler (
                     grant_valid = 1'b1;
                     grant_owner = CORE_E;
                 end
+
             end
         end
     end
 
+    // Transaction controller.
     always @(posedge clk or posedge reset) begin
+
         if (reset) begin
+
             transaction_active <= 1'b0;
             transaction_owner <= CORE_P;
+
             last_grant <= CORE_E;
 
             saved_read <= 1'b0;
             saved_execute <= 1'b0;
             saved_write <= 1'b0;
-            saved_address <= 34'b0;
+            saved_address <= 32'b0;
             saved_write_data <= 32'b0;
 
             pending_valid <= 1'b0;
@@ -115,127 +148,193 @@ module tomato_core_scheduler (
             pending_read <= 1'b0;
             pending_execute <= 1'b0;
             pending_write <= 1'b0;
-            pending_address <= 34'b0;
+            pending_address <= 32'b0;
             pending_write_data <= 32'b0;
 
             p_mem_read_data <= 32'b0;
             e_mem_read_data <= 32'b0;
-            p_mem_ready <= 1'b0;
-            e_mem_ready <= 1'b0;
-        end
-        else begin
+
             p_mem_ready <= 1'b0;
             e_mem_ready <= 1'b0;
 
-            // Capture the other core's request.
+            p_mem_fault <= 1'b0;
+            e_mem_fault <= 1'b0;
+
+        end
+        else begin
+
+            // Default response pulses.
+            p_mem_ready <= 1'b0;
+            e_mem_ready <= 1'b0;
+
+            p_mem_fault <= 1'b0;
+            e_mem_fault <= 1'b0;
+
+            // Capture the other core's request while
+            // a transaction is active.
             if (transaction_active && !pending_valid) begin
+
                 if (transaction_owner == CORE_P && e_request) begin
+
                     pending_valid <= 1'b1;
                     pending_owner <= CORE_E;
+
                     pending_read <= e_mem_read;
                     pending_execute <= e_execute_active;
                     pending_write <= e_mem_write;
-                    pending_address <= {2'b00, e_mem_address};
+
+                    pending_address <= e_mem_address;
                     pending_write_data <= e_mem_write_data;
+
                 end
                 else if (transaction_owner == CORE_E && p_request) begin
+
                     pending_valid <= 1'b1;
                     pending_owner <= CORE_P;
+
                     pending_read <= p_mem_read;
                     pending_execute <= p_execute_active;
                     pending_write <= p_mem_write;
-                    pending_address <= {2'b00, p_mem_address};
+
+                    pending_address <= p_mem_address;
                     pending_write_data <= p_mem_write_data;
+
                 end
             end
 
             // Complete the active transaction.
-            if (transaction_active && mem_ready) begin
+            if (transaction_active && transaction_complete) begin
+
                 transaction_active <= 1'b0;
 
                 if (transaction_owner == CORE_P) begin
-                    p_mem_read_data <= mem_read_data;
-                    p_mem_ready <= 1'b1;
+
+                    if (mem_fault === 1'b1) begin
+                        p_mem_fault <= 1'b1;
+                    end
+                    else begin
+                        p_mem_read_data <= mem_read_data;
+                        p_mem_ready <= 1'b1;
+                    end
+
                 end
                 else begin
-                    e_mem_read_data <= mem_read_data;
-                    e_mem_ready <= 1'b1;
+
+                    if (mem_fault === 1'b1) begin
+                        e_mem_fault <= 1'b1;
+                    end
+                    else begin
+                        e_mem_read_data <= mem_read_data;
+                        e_mem_ready <= 1'b1;
+                    end
+
                 end
             end
 
             // Start the next transaction.
             if (!transaction_active) begin
+
+                // Pending request has priority.
                 if (pending_valid) begin
+
                     transaction_active <= 1'b1;
                     transaction_owner <= pending_owner;
+
                     last_grant <= pending_owner;
 
                     saved_read <= pending_read;
                     saved_execute <= pending_execute;
                     saved_write <= pending_write;
+
                     saved_address <= pending_address;
                     saved_write_data <= pending_write_data;
 
                     pending_valid <= 1'b0;
+
                 end
+
+                // Otherwise use the round-robin grant.
                 else if (grant_valid) begin
+
                     transaction_active <= 1'b1;
                     transaction_owner <= grant_owner;
+
                     last_grant <= grant_owner;
 
                     if (grant_owner == CORE_P) begin
+
                         saved_read <= p_mem_read;
                         saved_execute <= p_execute_active;
                         saved_write <= p_mem_write;
-                        saved_address <= {2'b00, p_mem_address};
+
+                        saved_address <= p_mem_address;
                         saved_write_data <= p_mem_write_data;
 
+                        // Save the other core's request.
                         if (e_request) begin
+
                             pending_valid <= 1'b1;
                             pending_owner <= CORE_E;
+
                             pending_read <= e_mem_read;
                             pending_execute <= e_execute_active;
                             pending_write <= e_mem_write;
-                            pending_address <= {2'b00, e_mem_address};
+
+                            pending_address <= e_mem_address;
                             pending_write_data <= e_mem_write_data;
+
                         end
+
                     end
                     else begin
+
                         saved_read <= e_mem_read;
                         saved_execute <= e_execute_active;
                         saved_write <= e_mem_write;
-                        saved_address <= {2'b00, e_mem_address};
+
+                        saved_address <= e_mem_address;
                         saved_write_data <= e_mem_write_data;
 
+                        // Save the other core's request.
                         if (p_request) begin
+
                             pending_valid <= 1'b1;
                             pending_owner <= CORE_P;
+
                             pending_read <= p_mem_read;
                             pending_execute <= p_execute_active;
                             pending_write <= p_mem_write;
-                            pending_address <= {2'b00, p_mem_address};
+
+                            pending_address <= p_mem_address;
                             pending_write_data <= p_mem_write_data;
+
                         end
+
                     end
                 end
             end
         end
     end
 
-    // Shared physical memory bus.
+    // Stable virtual memory bus.
     always @(*) begin
+
         mem_read = 1'b0;
         mem_execute = 1'b0;
         mem_write = 1'b0;
-        mem_address = 34'b0;
+
+        mem_address = 32'b0;
         mem_write_data = 32'b0;
 
         if (transaction_active) begin
+
             mem_read = saved_read;
             mem_execute = saved_execute;
             mem_write = saved_write;
+
             mem_address = saved_address;
             mem_write_data = saved_write_data;
+
         end
     end
 
